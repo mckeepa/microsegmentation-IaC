@@ -1,6 +1,6 @@
 # Verify Kubernetes Isolation
 
-Return to the [project README](../../README.md) and review the [policy architecture](../../doco/ARCHITECTURE.md) before testing. Kubernetes isolation is the primary runtime validation target.
+Return to the [project README](../../README.md) and review the [policy architecture](../../doco/ARCHITECTURE.md). Complete [task 30](../30-create-kubevirt-vms/README.md) and install/configure the guest operating systems before testing.
 
 ## Test VMs
 
@@ -14,12 +14,12 @@ If you want to test actual RHEL instead of a compatible rebuild, use the no-cost
 
 Use the resource sizing from the [lab VM inventory](../../doco/LAB-SETUP.md). Do not create these guests in Virtual Machine Manager; they are KubeVirt workloads. Keep the Windows guest powered off during the Rocky test and vice versa. Windows evaluation media is not a production license; attach the KubeVirt `virtio-win` driver disk and install the matching storage/network drivers. Confirm Windows Server 2025 support against the pinned KubeVirt version before the run.
 
-Before creating the VMIs, complete [task 25: prepare guest images](../25-prepare-guest-images/README.md). The Ubuntu and Rocky media are downloaded and checksum-verified by scripts. The Windows Evaluation ISO is obtained interactively from Microsoft and staged by the helper script; do not automate past Microsoft's evaluation terms. The method to import each ISO into KubeVirt storage is **TBD** until the cluster storage class and CDI/upload approach are selected.
+## Isolation Test Scope
 
-## Steps
+`run-isolation-test.sh` is a legacy interactive end-to-end installer and policy-test workflow. It creates its own namespace and guest resources and is not compatible with the resources created by task 30. Do not run it after task 30. The policy-test procedure below remains the intended validation after guest operating systems are installed and configured; automating it requires a separate test runner.
 
 1. Record the CNI, KubeVirt binding mode, network attachment, storage class, VM labels, namespace labels, and guest IPs used for the run.
-2. Create a dedicated namespace with stable labels. Start `netpol-server-rocky` from the Rocky 10 guest image with a single test service; later repeat the same policy cases against `netpol-server-windows` using the Windows Server evaluation image.
+2. Start `netpol-server-rocky` with a single test service; later repeat the same policy cases against `netpol-server-windows` using the Windows Server evaluation image.
 3. Verify baseline connectivity before applying policy so that routing and service startup are known-good.
 4. Apply explicit default-deny ingress and egress policies. Remember that standard NetworkPolicy treats ingress and egress isolation independently and combines matching allows additively.
 5. Add only the intended DNS and client-to-server allow rules. Avoid broad CIDR, namespace, or port allowances unless they are part of the test case.

@@ -36,6 +36,21 @@ On a fresh VM install, Ubuntu autoinstall runs `apt-get update` and `apt-get upg
 
 The script refuses to alter an unrelated VM with the same name. If this project's marked VM already exists, it starts it if stopped and otherwise leaves it running.
 
+## Resize the Existing VM Disk
+
+Do not run `qemu-img resize` directly against the active VM disk; QEMU holds a write lock while the VM is running. The managed lab disk can be expanded online with libvirt's `blockresize`, then the guest partition, LVM physical volume, root logical volume, and filesystem are grown through QEMU guest agent.
+
+Preview an increase to a total virtual size of 130 GiB, then apply it:
+
+```sh
+bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh 130 --dry-run
+bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh 130
+```
+
+The argument is the **new total disk size in GiB**, not the amount to add. The script only operates on the project-managed running `lab-k8s-01` VM and its `vda` QCOW2 disk, refuses shrinking, and requires 150 GiB free in the libvirt default storage pool. It uses the QEMU guest agent to grow the known Ubuntu LVM root layout. If the disk resize succeeds but guest filesystem growth fails, correct the reported guest issue and rerun with the same target; the script resumes without shrinking or re-resizing the virtual disk.
+
+QCOW2 virtual capacity is thin-provisioned; expanding the virtual maximum does not immediately allocate the entire increase on the host. The host still needs enough physical storage for future guest writes. Check `df -h /` inside the guest afterward and retain at least the documented lab storage margin.
+
 When libvirt reports an IPv4 DHCP lease, the provisioner prints a ready-to-copy `SSH login` command. It uses only the generated private key and a project-specific known-hosts file; log in as `labadmin`. The DHCP lease can appear before Ubuntu autoinstall has finished, so wait for the guest's first boot to complete before expecting SSH authentication to work. If no lease or login command is printed, check with `virsh -c qemu:///system domifaddr lab-k8s-01 --source lease`; once it appears, rerun the provisioner to print the command.
 
 To let the helper start a stopped VM, wait for DHCP and SSH, prompt if the VM stops while waiting, and then open an interactive SSH session, run:

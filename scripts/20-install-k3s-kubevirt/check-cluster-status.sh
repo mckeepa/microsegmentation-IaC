@@ -11,7 +11,7 @@ managed_title="microsegmentation-iac-lab-k8s-01"
 ssh_key="$work_dir/${vm_name}_ed25519"
 known_hosts="$work_dir/${vm_name}_known_hosts"
 
-for command_name in virsh ssh; do
+for command_name in virsh ssh jq; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     printf 'Error: %s is required on the QEMU/KVM host.\n' "$command_name" >&2
     exit 1
@@ -39,8 +39,19 @@ fi
 
 guest_ip=$(virsh -c qemu:///system domifaddr "$vm_name" --source lease | awk '$3 == "ipv4" { split($4, address, "/"); print address[1]; exit }')
 if [[ -z "$guest_ip" ]]; then
-  printf 'Error: no DHCP lease found for %s. Wait for the guest to boot, then retry.\n' "$vm_name" >&2
-  exit 1
+  guest_mac=$(virsh -c qemu:///system domiflist "$vm_name" | awk '$3 == "default" { print tolower($5); exit }')
+  interface_json=$(virsh -c qemu:///system qemu-agent-command "$vm_name" \
+    '{"execute":"guest-network-get-interfaces"}') || {
+    printf 'Error: no DHCP lease and QEMU guest agent is unavailable for %s.\n' "$vm_name" >&2
+    exit 1
+  }
+  guest_ip=$(jq -r --arg mac "$guest_mac" \
+    '.return[] | select((."hardware-address" // "" | ascii_downcase) == $mac) | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4" and (.["ip-address"] | startswith("169.254.") | not)) | .["ip-address"]' \
+    <<< "$interface_json" | awk 'NR == 1 { print; exit }')
+  if [[ -z "$guest_ip" ]]; then
+    printf 'Error: no DHCP lease or host-reachable guest-agent IPv4 found for %s.\n' "$vm_name" >&2
+    exit 1
+  fi
 fi
 
 ssh_options=(
@@ -53,6 +64,15 @@ ssh_options=(
 )
 
 printf 'Cluster status from %s (%s):\n' "$vm_name" "$guest_ip"
+if ! ssh "${ssh_options[@]}" "$vm_user@$guest_ip" true >/dev/null 2>&1; then
+  printf 'SSH is unavailable; trying the guarded QEMU-agent route recovery...\n' >&2
+  if ! bash "$script_dir/repair-guest-network.sh" --repair; then
+    printf '\nError: SSH recovery failed. Diagnose with:\n' >&2
+    printf '  bash scripts/20-install-k3s-kubevirt/repair-guest-network.sh --diagnose\n' >&2
+    exit 255
+  fi
+fi
+
 ssh "${ssh_options[@]}" "$vm_user@$guest_ip" \
   "sudo -n env CHECK_VM_IP='$guest_ip' bash -s" <<'REMOTE'
 set -uo pipefail

@@ -54,7 +54,7 @@ Ubuntu 24.04.5 is the latest point release in the 24.04 LTS series, but not the 
 
 Do not create separate K3s control-plane and worker VMs for the first proof of concept. Add a second K3s node only if later tests specifically require cross-node policy behavior. VMware NSX Manager and Azure appliances are not part of this local VM inventory; NSX requires an authorized VMware environment, and Azure networking is a cloud deployment rather than a local VM.
 
-Follow the task guides in [scripts/README.md](../scripts/README.md), starting with [host preflight](../scripts/00-host-preflight/README.md) and [creating the lab VM](../scripts/10-create-lab-vm/README.md). After K3s/KubeVirt installation, run [task 25 to prepare Ubuntu, Rocky, and Windows guest images](../scripts/25-prepare-guest-images/README.md) before beginning [isolation verification](../scripts/30-verify-kubernetes-isolation/README.md).
+Follow the task guides in [scripts/README.md](../scripts/README.md), starting with [host preflight](../scripts/00-host-preflight/README.md) and [creating the lab VM](../scripts/10-create-lab-vm/README.md). After K3s/KubeVirt installation, run [task 25 to prepare Ubuntu, Rocky, and Windows guest images](../scripts/25-prepare-guest-images/README.md), then create and boot-check the guest VMs using [task 30](../scripts/30-create-kubevirt-vms/README.md). OS installation and [task 35 isolation validation](../scripts/35-verify-kubernetes-isolation/README.md) follow separately.
 
 ## Required Decisions Before Installation
 

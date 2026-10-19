@@ -45,6 +45,6 @@ The helper checks that the input looks like ISO/UDF media and copies it to `work
 ls -lh work/*.iso
 ```
 
-Use the Ubuntu ISO to install `lab-k8s-01` in Virtual Machine Manager. The Rocky and Windows ISOs are for test guests created inside KubeVirt, not additional Virtual Machine Manager guests. Follow [Kubernetes isolation verification](../30-verify-kubernetes-isolation/README.md) after K3s, KubeVirt, storage, and the CNI are configured.
+Use the Ubuntu ISO to install `lab-k8s-01` in Virtual Machine Manager. The Rocky and Windows ISOs are for test guests created inside KubeVirt, not additional Virtual Machine Manager guests. After K3s, KubeVirt, storage, and the CNI are configured, use [task 30 to create the test VMs](../30-create-kubevirt-vms/README.md), then [task 35 to verify isolation](../35-verify-kubernetes-isolation/README.md).
 
 For Windows, attach the matching KubeVirt `virtio-win` driver disk as a CD-ROM during installation and load the storage driver when prompted. Install the guest network driver before testing traffic. Run the Windows guest separately from the Rocky guest to stay within the planned resource budget, and treat Windows Server 2025 support as unverified until the pinned KubeVirt release boots it and the network-policy tests pass.

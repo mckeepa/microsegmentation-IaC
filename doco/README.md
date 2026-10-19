@@ -9,5 +9,6 @@ These documents describe the intended KVM-hosted proof of concept and its path t
 3. [Lab setup](LAB-SETUP.md): host readiness, prerequisites, and capacity planning.
 4. [Operations guide](OPERATIONS-GUIDE.md): the configure, deploy, validate, and maintain workflow.
 5. [Project plan](PROJECT-PLAN.md): milestones, completion gates, and open decisions.
+6. [Implementation status](IMPLEMENTATION-STATUS.md): durable current checkpoint and safe resume order.
 
 The [original source material](orginal/) is retained as reference. It includes exploratory proposals and duplicated or incomplete documents; it is not an authoritative runbook.

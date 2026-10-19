@@ -80,7 +80,7 @@ KUBECONFIG=work/kubeconfig-lab-k8s-01.yaml kubectl get kubevirt -n kubevirt
 KUBECONFIG=work/kubeconfig-lab-k8s-01.yaml kubectl get cdi -n cdi
 ```
 
-Prepare the test OS images with [task 25](../25-prepare-guest-images/README.md), then follow [Kubernetes isolation verification](../30-verify-kubernetes-isolation/README.md).
+Prepare the test OS images with [task 25](../25-prepare-guest-images/README.md), then create and boot-check the test VM resources with [task 30](../30-create-kubevirt-vms/README.md). Install each guest OS before running [task 35 isolation tests](../35-verify-kubernetes-isolation/README.md).
 
 The dry run does not contact GitHub or mutate the host/guest. An actual run downloads pinned components and changes `lab-k8s-01`; errors stop the script, but cleanup/rollback of an already-installed cluster is a separate [task](../90-cleanup/README.md).
 
@@ -148,6 +148,22 @@ ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts
 	labadmin@192.168.122.111 \
 	'sudo systemctl is-active k3s; sudo journalctl -u k3s -n 100 --no-pager'
 ```
+
+If libvirt reports a DHCP lease but SSH times out, the cluster checker automatically tries the guarded QEMU-agent route repair. To inspect guest networking without changing it, run:
+
+```sh
+bash scripts/20-install-k3s-kubevirt/repair-guest-network.sh --diagnose
+```
+
+The diagnostic checks the managed VM, current DHCP lease, libvirt NAT gateway, guest NIC MAC, OVS bridge membership, and guest routes. If it confirms the specific OVN case where the libvirt NIC is enslaved to an OVS bridge, the bridge has no default route, and QEMU guest agent is available, apply the current leased address and NAT gateway to that bridge with:
+
+```sh
+bash scripts/20-install-k3s-kubevirt/repair-guest-network.sh --repair
+```
+
+This repair changes only the running guest's bridge address/default route. It refuses to replace an existing default route and verifies SSH afterward. It is not persistent across a guest reboot; the cluster checker retries it on a later run, but a permanent boot-time network fix still needs to be designed and verified.
+
+If the libvirt DHCP lease has expired, `check-cluster-status.sh` and task 30 use the QEMU guest agent's address for the NIC matching the libvirt MAC, excluding `169.254.x.x` link-local addresses. For a full project checkpoint and next-step recommendation, run `bash scripts/check-lab-progress.sh`.
 
 For host capacity or KVM issues, rerun [host preflight](../00-host-preflight/README.md). A setup exit status of `255` usually indicates the SSH session ended unexpectedly; check the guest's process, pod state, events, and logs above before retrying.
 
