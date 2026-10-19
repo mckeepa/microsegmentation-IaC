@@ -2,6 +2,25 @@
 
 Start from the [project README](../README.md) for project scope and the [lab prerequisites](../doco/LAB-SETUP.md) for host capacity. Each task folder contains its own step-by-step guide and task-specific scripts. The current task 20 bootstrap pins its CNI and component versions; check its guide before changing those pins.
 
+## Resume After an Interruption
+
+After a power loss or break, start here:
+
+1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](../doco/IMPLEMENTATION-STATUS.md).
+2. Run the read-only checker from the repository root; it ends with a single `NEXT:` recommendation:
+
+   ```sh
+   bash scripts/check-lab-progress.sh
+   ```
+
+3. Follow that recommendation, then update the checkpoint file when a task completes or a new blocker is found.
+
+Common recovery references:
+
+- Outer VM disk too small: [resize the existing VM disk](10-create-lab-vm/README.md#resize-the-existing-vm-disk).
+- No SSH / DHCP lease expired: [task 20 troubleshooting](20-install-k3s-kubevirt/README.md#check-progress-and-troubleshoot) and `repair-guest-network.sh --diagnose`.
+- Task 30 VM/PVC/image-pull failures: [task 30 troubleshooting](30-create-kubevirt-vms/README.md#troubleshooting).
+
 ## Task Guides
 
 1. [Host preflight](00-host-preflight/README.md): confirm CPU, memory, disk, nested virtualization, and KVM access.

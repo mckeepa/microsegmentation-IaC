@@ -8,9 +8,28 @@ The project is intended to test how workload identity, default-deny policy, expl
 
 Documentation and design planning. No installable IaC modules or tested deployment automation are present yet. Host checks found 16 logical CPUs, 62 GiB RAM, Intel nested virtualization enabled, and `/dev/kvm` present. The latest storage check found 461 GiB free on the root filesystem, above the 150 GiB planning target; see the [lab setup](doco/LAB-SETUP.md) before creating VMs.
 
+For the current implementation checkpoint, see [Implementation status](doco/IMPLEMENTATION-STATUS.md).
+
+## Resume After an Interruption
+
+After a power loss or break, run these from the repository root on the QEMU/KVM host:
+
+1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](doco/IMPLEMENTATION-STATUS.md) for completed tasks, known blockers, and the resume order.
+2. Run the read-only progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
+
+   ```sh
+   bash scripts/check-lab-progress.sh
+   ```
+
+3. Follow the `NEXT:` step. The task guides in [scripts/README.md](scripts/README.md) cover troubleshooting and resizing the outer VM disk.
+4. Update the checkpoint file when a task completes or a new blocker is found.
+
+The task scripts preserve partial state and resume project-owned resources. Do not delete the `netpol-test` namespace or run cleanup to "start fresh" unless the checker or checkpoint says to.
+
 ## Documentation
 
 - [Documentation index](doco/README.md)
+- [Implementation status and resume checkpoint](doco/IMPLEMENTATION-STATUS.md)
 - [Architecture](doco/ARCHITECTURE.md)
 - [High-level design](doco/HIGH-LEVEL-DESIGN.md)
 - [Lab setup and prerequisites](doco/LAB-SETUP.md)

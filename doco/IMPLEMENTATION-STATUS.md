@@ -1,8 +1,23 @@
 # Implementation Status
 
-Last checked: 2026-10-19
+Last checked: 2026-10-19 23:53 (verified with `scripts/check-lab-progress.sh`)
 
-This is the durable project checkpoint. Run `bash scripts/check-lab-progress.sh` for a fresh, read-only inventory before resuming; live state may have changed since this note was written.
+This is the durable project checkpoint. Run `bash scripts/check-lab-progress.sh` for a fresh, read-only inventory before resuming; live state may have changed since this note was written. Update this file whenever a task completes or a new blocker is found.
+
+## Where We Are
+
+| Task | State |
+| --- | --- |
+| 00 Host preflight | Done |
+| 10 Outer VM `lab-k8s-01` | Done; disk expanded 100 → 130 GiB |
+| 20 K3s / OVN / KubeVirt / CDI | Done; healthy |
+| 25 Guest media | Done; ISOs staged and uploaded |
+| 30 KubeVirt test VMs | **In progress / blocked** on the Windows VirtIO image |
+| 30 Guest OS installs | Not started |
+| 35 Isolation tests | Not started |
+| 40 Azure/NSX static checks | Not started |
+
+**Do not rerun `create-test-vms.sh` yet.** It still references `quay.io/kubevirt/virtio-container-disk`, the image that failed, so Windows will fail the same way. Fix `virtio_disk_image` first (see Resume Order step 2).
 
 ## Completed
 
@@ -18,7 +33,8 @@ This is the durable project checkpoint. Run `bash scripts/check-lab-progress.sh`
 - Windows server `netpol-server-windows` exists, but its VMI is `Pending`; task 30 has **not** completed.
 - The Windows launcher pod failed to pull `quay.io/kubevirt/virtio-container-disk:latest`. The recorded failure is that containerd 2.3 rejects the image's Docker schema-1 manifest (`application/vnd.docker.distribution.manifest.v1+prettyjws`). The Windows VM template needs a schema-2/OCI-compatible VirtIO driver media source before its boot check can pass.
 - The prior Windows blank-disk DataVolume remains `PVCBound` under `WaitForFirstConsumer`. The current local task 30 script has been changed to create plain PVCs and mount them directly, but this revised path has not yet been validated end to end. Existing resources are preserved; do not delete the namespace to retry.
-- Guest `/` had about 90 GiB free after disk expansion, above task 30's 84 GiB guard.
+- Guest `/` had about 89 GiB free at the last check, above task 30's 84 GiB guard.
+- The guest currently has no libvirt DHCP lease. It is reachable at `192.168.122.162` via the address reported by the QEMU guest agent.
 
 ## Resume Order
 

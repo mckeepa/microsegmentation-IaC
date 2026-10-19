@@ -12,6 +12,7 @@ namespace="netpol-test"
 namespace_owner="microsegmentation-iac"
 minimum_guest_free_kib=$((84 * 1024 * 1024))
 recommendation=""
+unhealthy_pods="unknown"
 
 recommend() {
   if [[ -z "$recommendation" ]]; then
@@ -129,7 +130,8 @@ if [[ -z "$node_json" || -z "$pods_json" ]]; then
   recommend "Inspect the cluster: bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh"
 else
   node_ready=$(jq -r '(.items | length) > 0 and all(.items[]; any(.status.conditions[]; .type == "Ready" and .status == "True"))' <<< "$node_json")
-  unhealthy_pods=$(jq -r '[.items[] | select(.status.phase != "Succeeded") | select(.status.phase != "Running" or any((.status.containerStatuses // [])[]; .ready != true))] | length' <<< "$pods_json")
+  # Task 30 launcher pods are reported in their own section.
+  unhealthy_pods=$(jq -r --arg ns "$namespace" '[.items[] | select(.metadata.namespace != $ns) | select(.status.phase != "Succeeded") | select(.status.phase != "Running" or any((.status.containerStatuses // [])[]; .ready != true))] | length' <<< "$pods_json")
   if [[ "$node_ready" == true && "$unhealthy_pods" == 0 ]]; then
     printf 'PASS Kubernetes node Ready; all pods Running/ready\n'
   else
@@ -138,10 +140,40 @@ else
   fi
 fi
 
+printf '\n%s\n' '--- Local inputs (tasks 20/25) ---'
+for file_path in "$work_dir/kubeconfig-${vm_name}.yaml" \
+  "$work_dir/Rocky-10-latest-x86_64-minimal.iso" \
+  "$work_dir/ubuntu-24.04.5-live-server-amd64.iso" \
+  "$work_dir/windows-server-2025-evaluation.iso"; do
+  if [[ -s "$file_path" ]]; then
+    printf 'PASS %s\n' "${file_path#"$repo_root/"}"
+  else
+    printf 'FAIL missing %s\n' "${file_path#"$repo_root/"}"
+    case "$file_path" in
+      *kubeconfig*) recommend "Re-export kubeconfig by rerunning: bash scripts/20-install-k3s-kubevirt/setup-k3s-kubevirt.sh" ;;
+      *) recommend "Stage guest media per scripts/25-prepare-guest-images/README.md" ;;
+    esac
+  fi
+done
+
+# Events expire after ~1h, so also check the template for the known schema-1 image.
+virtio_image_ref=$(awk -F'"' '/^virtio_disk_image=/ { print $2; exit }' "$script_dir/30-create-kubevirt-vms/create-test-vms.sh")
+virtio_image_known_bad=false
+if [[ "$virtio_image_ref" == "quay.io/kubevirt/virtio-container-disk" || "$virtio_image_ref" == "quay.io/kubevirt/virtio-container-disk:latest" ]]; then
+  virtio_image_known_bad=true
+  printf 'BLOCKED task 30 Windows VirtIO image is the known schema-1 image: %s\n' "$virtio_image_ref"
+else
+  printf 'INFO task 30 Windows VirtIO image: %s\n' "$virtio_image_ref"
+fi
+fix_virtio_recommendation="Fix the Windows VirtIO container-disk reference (virtio_disk_image) to an OCI/schema-2-compatible image in scripts/30-create-kubevirt-vms/create-test-vms.sh, then rerun this status check before resuming task 30."
+
 namespace_json=$(ssh "${ssh_options[@]}" "$destination" \
   "sudo -n k3s kubectl get namespace '$namespace' --ignore-not-found -o json" 2>/dev/null || true)
 if [[ -z "$namespace_json" ]]; then
   printf '\nTask 30 namespace: not created\n'
+  if [[ "$virtio_image_known_bad" == true ]]; then
+    recommend "$fix_virtio_recommendation"
+  fi
   recommend "Create and boot-check the guest VM resources: bash scripts/30-create-kubevirt-vms/create-test-vms.sh"
   printf '\nNEXT: %s\n' "$recommendation"
   exit 0
@@ -172,20 +204,27 @@ jq -r '.items[] | select(.kind == "DataVolume") | "DataVolume \(.metadata.name):
 jq -r '.items[] | select(.kind == "VirtualMachine") | "VM \(.metadata.name): \(.status.printableStatus // (if .status.ready then "Ready" else "not ready" end))"' <<< "$resources_json"
 jq -r '.items[] | select(.kind == "VirtualMachineInstance") | "VMI \(.metadata.name): \(.status.phase // "unknown")"' <<< "$resources_json"
 
-schema1_error=$(jq -r '[.items[]? | .message // "" | select(test("manifest\\.v1|schema.?1|no longer supported"; "i"))] | first // empty' <<< "${events_json:-{}}")
+schema1_error=$(jq -r '[.items[]? | .message // "" | select(test("manifest\\.v1|schema.?1|no longer supported"; "i"))] | first // empty' <<< "${events_json:-"{}"}")
 image_pull_error=$(jq -r '[.items[] | select(.kind == "Pod") | ((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[]? | select(.state.waiting.reason == "ImagePullBackOff" or .state.waiting.reason == "ErrImagePull") | "\(.image): \(.state.waiting.message // .state.waiting.reason)"] | first // empty' <<< "$resources_json")
+vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine")] | length' <<< "$resources_json")
+stopped_vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine") | select(.status.printableStatus == "Stopped")] | length' <<< "$resources_json")
+task30_complete=false
+if (( vm_count == 3 && stopped_vm_count == 3 )); then
+  task30_complete=true
+fi
+
 if [[ -n "$schema1_error" || -n "$image_pull_error" ]]; then
   printf 'BLOCKED launcher image pull: %s\n' "${schema1_error:-$image_pull_error}"
-  recommend "Fix the Windows VirtIO container-disk reference to an OCI/schema-2-compatible image in scripts/30-create-kubevirt-vms/create-test-vms.sh, then rerun this status check before resuming task 30."
+  recommend "$fix_virtio_recommendation"
+elif [[ "$virtio_image_known_bad" == true && "$task30_complete" != true ]]; then
+  recommend "$fix_virtio_recommendation"
 elif jq -e '[.items[] | select(.kind == "DataVolume") | select(.status.phase == "PVCBound" or .status.phase == "WaitForFirstConsumer")] | length > 0' <<< "$resources_json" >/dev/null; then
   printf 'BLOCKED a CDI DataVolume is waiting for its first consumer.\n'
   recommend "Use and validate the direct-PVC guest-disk path in scripts/30-create-kubevirt-vms/create-test-vms.sh before resuming."
 elif [[ "$unhealthy_pods" != 0 ]]; then
   recommend "Resolve cluster or launcher pod warnings before resuming task 30."
 else
-  vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine")] | length' <<< "$resources_json")
-  stopped_vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine") | select(.status.printableStatus == "Stopped")] | length' <<< "$resources_json")
-  if (( vm_count == 3 && stopped_vm_count == 3 )); then
+  if [[ "$task30_complete" == true ]]; then
     printf 'All three task 30 VMs exist and are stopped; Kubernetes state does not prove OS installation.\n'
     recommend "Install guest operating systems one at a time using the start/VNC instructions in scripts/30-create-kubevirt-vms/README.md, then continue to task 35."
   else
