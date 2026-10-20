@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#146b4b">
+  <title>Lab Switchboard</title>
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/assets/lucide.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div id="login-view" class="login-layout">
+    <div class="login-brand"><img src="/mark.svg" alt="" width="38" height="38"><span>Lab Switchboard</span></div>
+    <main class="login-main">
+      <p class="eyebrow">LOCAL INFRASTRUCTURE</p>
+      <h1>Your lab.<br>One control desk.</h1>
+      <form id="login-form">
+        <label for="password">Portal password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+        <p id="login-error" class="error" role="alert"></p>
+        <button class="primary" id="login-button" type="submit">Sign in <i data-lucide="arrow-right"></i></button>
+      </form>
+    </main>
+    <footer class="login-footer">K3s <span>/</span> KubeVirt <span>/</span> QEMU + KVM</footer>
+  </div>
+
+  <div id="portal" class="portal" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="#fleet"><img src="/mark.svg" width="32" height="32" alt=""><span>Lab<br><strong>Switchboard</strong></span></a>
+      <div class="cluster-label"><span class="dot"></span><span id="cluster-name">lab-k8s-01</span></div>
+      <nav aria-label="Main navigation">
+        <a href="#fleet" class="active"><i data-lucide="server"></i>Virtual machines<span id="nav-vm-count"></span></a>
+        <a href="#dashboards"><i data-lucide="panels-top-left"></i>Dashboards</a>
+        <a href="#runbook"><i data-lucide="square-terminal"></i>Command desk</a>
+      </nav>
+      <div class="sidebar-bottom"><span class="version">v0.1.0</span><span>K3s / KubeVirt</span></div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div><span class="breadcrumb">Workspace</span><span class="separator">/</span><strong>Home lab</strong><span id="demo-badge" class="demo" hidden>DEMO</span></div>
+        <div class="topbar-actions"><span id="sync-status" role="status">Connecting</span><button id="refresh" class="icon-button" title="Refresh inventory" aria-label="Refresh inventory"><i data-lucide="refresh-cw"></i></button><button id="logout" class="icon-button" title="Sign out" aria-label="Sign out"><i data-lucide="log-out"></i></button></div>
+      </header>
+      <main class="content">
+        <section id="fleet">
+          <div class="section-heading"><div><p class="eyebrow">COMPUTE / GUEST INVENTORY</p><h1>Virtual machines</h1></div><span class="environment"><span class="dot"></span>Local lab</span></div>
+          <div class="metrics" aria-label="Guest inventory summary">
+            <div><span>Total guests</span><strong id="total-count">-</strong></div>
+            <div><span>Ready</span><strong id="running-count" class="green-text">-</strong></div>
+            <div><span>Stopped</span><strong id="stopped-count">-</strong></div>
+            <div><span>Transition / attention</span><strong id="attention-count">-</strong></div>
+          </div>
+          <div class="fleet-toolbar"><label class="search"><i data-lucide="search"></i><input id="vm-search" type="search" placeholder="Find a virtual machine" aria-label="Find a virtual machine"></label><div class="segmented" aria-label="VM status filter"><button data-filter="all" aria-pressed="true">All</button><button data-filter="running" aria-pressed="false">Ready</button><button data-filter="stopped" aria-pressed="false">Stopped</button></div></div>
+          <div id="inventory-error" class="error-banner" role="alert" hidden></div>
+          <div class="table-scroll"><table class="vm-table"><thead><tr><th>Virtual machine</th><th>Status</th><th>Namespace</th><th>Resources</th><th class="actions-heading">Actions</th></tr></thead><tbody id="vm-list"><tr><td colspan="5" class="empty">Loading inventory...</td></tr></tbody></table></div>
+          <div class="fleet-footer"><span id="inventory-count">Connecting to cluster</span><button id="stop-all" class="text-button danger"><i data-lucide="square"></i>Stop all guests</button></div>
+          <div id="access-panel" class="access-panel" hidden>
+            <div class="access-heading"><div><p class="eyebrow">GUEST ACCESS</p><h2 id="access-title"></h2></div><button id="close-access" class="icon-button" title="Close guest access" aria-label="Close guest access"><i data-lucide="x"></i></button></div>
+            <p id="access-note" class="muted"></p>
+            <div id="access-commands"></div>
+          </div>
+        </section>
+
+        <section id="dashboards" class="dashboard-section">
+          <div class="section-heading"><div><p class="eyebrow">OBSERVE / ADMINISTER</p><h2>Dashboards</h2></div><span class="section-note">Host tunnel required</span></div>
+          <div id="dashboard-links" class="dashboard-grid"></div>
+        </section>
+
+        <section id="runbook" class="runbook-section">
+          <div class="section-heading"><div><p class="eyebrow">OPERATE / CONNECT</p><h2>Command desk</h2></div><span class="section-note">Run on the KVM-host laptop</span></div>
+          <div id="command-list"></div>
+        </section>
+        <footer class="page-footer"><span>Lab Switchboard</span><span id="last-updated"></span></footer>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog"><div class="dialog-symbol"><i data-lucide="power"></i></div><h2 id="confirm-title">Confirm action</h2><p id="confirm-description"></p><p id="confirm-warning" class="warning"></p><div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="confirm" id="confirm-submit" class="primary">Confirm</button></div></form>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

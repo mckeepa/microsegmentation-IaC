@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-dashboard
+  labels:
+    microsegmentation-lab/managed-by: microsegmentation-iac
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp
+  namespace: lab-dashboard
+  labels:
+    microsegmentation-lab/managed-by: microsegmentation-iac
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp
+  namespace: lab-dashboard
+  labels:
+    microsegmentation-lab/managed-by: microsegmentation-iac
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lab-headlamp
+  template:
+    metadata:
+      labels:
+        app: lab-headlamp
+        microsegmentation-lab/managed-by: microsegmentation-iac
+    spec:
+      serviceAccountName: headlamp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: headlamp
+          image: ghcr.io/headlamp-k8s/headlamp:v0.46.0
+          args:
+            - -in-cluster
+            - -plugins-dir=/headlamp/plugins
+          ports:
+            - name: http
+              containerPort: 4466
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp
+  namespace: lab-dashboard
+  labels:
+    microsegmentation-lab/managed-by: microsegmentation-iac
+spec:
+  type: ClusterIP
+  selector:
+    app: lab-headlamp
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

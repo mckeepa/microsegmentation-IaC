@@ -12,7 +12,7 @@ namespace="netpol-test"
 namespace_owner="microsegmentation-iac"
 remote_upload_port=18443
 virtctl_sha256="c289393c8186a258653594605f5199b4c171a3131e6e409ed204a96b491b782a"
-virtio_disk_image="quay.io/kubevirt/virtio-container-disk"
+virtio_disk_image="quay.io/kubevirt/virtio-container-disk@sha256:06a32bc8a4d84d2d8d86ef06ba92dad00d78d1b34cec2ee48e17a2fbe438a094"
 dry_run=false
 
 usage() {
@@ -121,7 +121,7 @@ minimum_free_kib=$((minimum_free_gib * 1024 * 1024))
 
 if [[ "$dry_run" == true ]]; then
   printf 'Dry run: no cluster resources or files will be changed.\n'
-  printf 'Namespace: %s (must not already exist)\n' "$namespace"
+  printf 'Namespace: %s (new or recognized project-owned resources only)\n' "$namespace"
   printf 'VM order: Rocky Linux, Ubuntu Server, Windows Server 2025 Evaluation\n'
   for index in "${!vm_names[@]}"; do
     printf '  %s: %s disk, %s memory, installer %s (%s bytes)\n' \
@@ -134,7 +134,7 @@ if [[ "$dry_run" == true ]]; then
   exit 0
 fi
 
-bash "$repo_root/scripts/20-install-k3s-kubevirt/check-cluster-status.sh"
+bash "$repo_root/scripts/20-install-k3s-kubevirt/check-cluster-status.sh" --infrastructure-only
 
 namespace_exists=$(ssh "${ssh_options[@]}" "$destination" \
   "sudo -n k3s kubectl get namespace '$namespace' -o name 2>/dev/null || true")
@@ -407,7 +407,21 @@ stop_pending_vmi_for_update() {
     "")
       return 0
       ;;
-    Pending|Scheduling|Failed)
+    Failed)
+      local failed_vmi vm_uid
+      failed_vmi=$(remote_kubectl get vmi "$name" -n "$namespace" -o json)
+      vm_uid=$(remote_kubectl get vm "$name" -n "$namespace" -o 'jsonpath={.metadata.uid}')
+      if [[ -z "$vm_uid" ]] || ! jq -e --arg name "$name" --arg uid "$vm_uid" \
+        '.status.phase == "Failed" and any(.metadata.ownerReferences[]?; .kind == "VirtualMachine" and .name == $name and .uid == $uid and .controller == true)' \
+        <<< "$failed_vmi" >/dev/null; then
+        printf 'Error: failed VMI %s ownership or phase changed; refusing recovery.\n' "$name" >&2
+        return 1
+      fi
+      printf 'Removing terminal failed VMI %s; its VM definition and persistent volumes are preserved.\n' "$name"
+      remote_kubectl delete vmi "$name" -n "$namespace" --wait=true --timeout=180s
+      return
+      ;;
+    Pending|Scheduling)
       printf 'Stopping unfinished %s VMI (phase %s) before updating its disk template.\n' "$name" "$phase"
       KUBECONFIG="$host_kubeconfig" "$virtctl_path" stop "$name" --namespace="$namespace" || true
       for _ in $(seq 1 60); do
@@ -500,6 +514,9 @@ EOF
   elif [[ "$role" == server ]]; then
     cat >> "$manifest" <<EOF
               ports:
+                - name: ssh
+                  port: 22
+                  protocol: TCP
                 - name: allowed-http
                   port: 8080
                   protocol: TCP

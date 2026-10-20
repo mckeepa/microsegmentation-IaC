@@ -24,6 +24,8 @@ Windows Server media remains an interactive Microsoft Evaluation Center download
 
 ## Decisions Before Bootstrap
 
+These describe the rationale and change gates for a new baseline. The deployed lab already uses the pinned OVN, local-path, CDI, and masquerade choices above; this is not a list of missing components. Do not switch CNI on the existing cluster as a troubleshooting shortcut.
+
 1. **CNI and policy controller. Recommended first candidate:** upstream OVN-Kubernetes, because OpenShift uses OVN-Kubernetes and the project's primary goal is to validate Kubernetes isolation against that network model. Before installation, verify that the chosen OVN-Kubernetes release supports the selected K3s/Kubernetes version and document its install procedure. Upstream OVN-Kubernetes on K3s is a closer dataplane comparison, but is not the same as Red Hat's packaged and managed OpenShift networking integration.
 2. **K3s custom-CNI configuration:** if OVN-Kubernetes is selected, follow K3s custom-CNI guidance: start with Flannel disabled (`--flannel-backend=none`) and disable K3s's embedded network-policy controller (`--disable-network-policy`) when OVN supplies policy enforcement. Start from a fresh cluster; K3s warns that disabling its controller later does not automatically remove its installed iptables rules. Do not run two policy controllers against the same traffic.
 3. **Fallback:** if a compatible, supportable OVN-Kubernetes-on-K3s version/configuration cannot be established, use bundled Flannel plus K3s's embedded policy controller to validate NetworkPolicy semantics and KubeVirt guest traffic. Record this as a functional fallback, not an OpenShift dataplane-parity result.
@@ -71,6 +73,8 @@ bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
 
 The checker prints node/pod details, then verifies the pinned K3s version and custom-CNI settings, OVN CNI files, CIDRs and Helm settings, readiness of all pods and the node, and the deployed KubeVirt/CDI versions. It exits `0` only when every check passes; any mismatch or unhealthy resource returns a nonzero exit status.
 
+For task 30 recovery, `check-cluster-status.sh --infrastructure-only` restricts pod readiness checks to `kube-system`, `ovn-kubernetes`, `kubevirt`, and `cdi`. All node, version, and configuration checks still run. This lets the creator recover failed test VM launchers without treating those launchers as infrastructure failures. The default command continues to check every namespace.
+
 Alternatively, if standalone `kubectl` is installed on the host, use the exported kubeconfig:
 
 ```sh
@@ -96,25 +100,24 @@ pgrep -af 'setup-k3s-kubevirt.sh|bootstrap-k3s-kubevirt'
 
 If this prints processes, setup is still running; no output means it has exited. A running process alone does not mean the cluster is healthy. Setup succeeds only when the original command prints `Lab cluster setup completed.` and exits with status `0`. If it returns to the prompt without that message, check the command's exit status immediately with `echo "$?"`.
 
-Check the node and all pods inside the guest. Query node and pod types separately; `kubectl get nodes,pods -A` is not valid syntax:
+For detailed commands, open a second host terminal and use the address-discovering helper:
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 \
-	-o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 \
-	'sudo k3s kubectl get nodes -o wide; sudo k3s kubectl get pods -A'
+bash scripts/10-create-lab-vm/login-lab-vm.sh
 ```
 
-To watch changes live, run either command in a second terminal and press Ctrl+C there when finished. This stops only the watch, not the setup command:
+The following commands run **inside the outer VM `lab-k8s-01`**, not on the physical host or inside `netpol-client`. Query nodes and pods separately:
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 'sudo k3s kubectl get nodes -w'
+sudo k3s kubectl get nodes -o wide
+sudo k3s kubectl get pods -A
 ```
 
+To watch changes, run either command and press Ctrl+C when finished; that stops only the watch:
+
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 'sudo k3s kubectl get pods -A -w'
+sudo k3s kubectl get nodes -w
+sudo k3s kubectl get pods -A -w
 ```
 
 A healthy cluster has node status `Ready`; OVN, CoreDNS, KubeVirt, and CDI pods should become `Running` with their ready counts satisfied. Persistent `Pending`, `CrashLoopBackOff`, `NotReady`, or repeated `Warning` events indicate a problem rather than normal progress.
@@ -122,32 +125,27 @@ A healthy cluster has node status `Ready`; OVN, CoreDNS, KubeVirt, and CDI pods 
 For failure details, inspect recent events and describe the affected pod using its name and namespace from `get pods`:
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 \
-	'sudo k3s kubectl get events -A --sort-by=.lastTimestamp | tail -n 30'
+sudo k3s kubectl get events -A --sort-by=.lastTimestamp | tail -n 30
 ```
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 \
-	'sudo k3s kubectl describe pod -n ovn-kubernetes <pod-name>'
+sudo k3s kubectl describe pod -n ovn-kubernetes POD_NAME
 ```
 
 For OVN controller logs, substitute the current `ovnkube-node` pod name shown by `get pods`:
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 \
-	'sudo k3s kubectl logs -n ovn-kubernetes <ovnkube-node-pod> -c ovnkube-controller --tail=100'
+sudo k3s kubectl logs -n ovn-kubernetes OVNKUBE_NODE_POD -c ovnkube-controller --tail=100
 ```
 
 Check the K3s service and its recent logs if the Kubernetes API is unavailable:
 
 ```sh
-ssh -i work/lab-k8s-01_ed25519 -o UserKnownHostsFile=work/lab-k8s-01_known_hosts \
-	labadmin@192.168.122.111 \
-	'sudo systemctl is-active k3s; sudo journalctl -u k3s -n 100 --no-pager'
+sudo systemctl is-active k3s
+sudo journalctl -u k3s -n 100 --no-pager
 ```
+
+Replace `POD_NAME` and `OVNKUBE_NODE_POD` with names from the pod listing. Run `exit` to return to the physical host. All commands below run **on the physical host from the repository root**.
 
 If libvirt reports a DHCP lease but SSH times out, the cluster checker automatically tries the guarded QEMU-agent route repair. To inspect guest networking without changing it, run:
 
@@ -171,6 +169,6 @@ If OVN logs show `forbidden` errors for `system:serviceaccount:ovn-kubernetes:ov
 
 If the run reaches OVN readiness but downloads fail with `Could not resolve host: github.com`, the OVN OVS bridge may have moved the default route off the interface that held the DHCP DNS setting. The bootstrap now writes `/etc/systemd/resolved.conf.d/90-lab-k3s-dns.conf` with the current default gateway as global DNS and verifies `github.com` resolution before downloading KubeVirt/CDI assets. The Helm lint message `[INFO] values.yaml: file does not exist` is informational when followed by `1 chart(s) linted, 0 chart(s) failed`; it is not the download failure.
 
-If pod events report `failed to find plugin "loopback" in path [/opt/cni/bin]`, the standard CNI plugins are missing even though OVN's overlay plugin is present. The bootstrap installs Ubuntu's `containernetworking-plugins` package and copies its binaries into `/opt/cni/bin` before starting K3s. On an already-running VM, the equivalent recovery is `sudo apt-get install -y containernetworking-plugins` followed by `sudo install -m 0755 /usr/lib/cni/* /opt/cni/bin/`; kubelet then retries pod sandbox creation.
+If pod events report `failed to find plugin "loopback" in path [/opt/cni/bin]`, the standard CNI plugins are missing even though OVN's overlay plugin is present. The bootstrap installs Ubuntu's `containernetworking-plugins` package and copies its binaries into `/opt/cni/bin` before starting K3s. For a diagnosed existing installation, log into the **outer VM** before running `sudo apt-get install -y containernetworking-plugins` followed by `sudo install -m 0755 /usr/lib/cni/* /opt/cni/bin/`; kubelet then retries pod sandbox creation. Do not run those package/file commands on the physical host or nested test guests.
 
-Do not run an unpinned `curl | sh` installer as the final repeatable setup procedure. When component choices are finalized, record official source URLs, checksums/signatures where supplied, and exact commands here.
+Do not replace the pinned bootstrap with an unpinned `curl | sh` installer. When changing the baseline, update its official source URLs, checksums/signatures, version checks, and this guide together.

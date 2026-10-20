@@ -4,6 +4,8 @@ Return to the [project README](../../README.md) or the [three-platform architect
 
 ## Steps
 
+**Status: planned validation checklist.** This directory does not yet contain a runnable adapter, Terraform module, or validation script. The steps below describe gates for future implementation, not commands to execute against the current lab.
+
 1. Confirm the shared policy intent and platform capability checks pass before generating any provider-specific resources.
 2. For Azure, validate the intended VNet address space, subnets, NSG association scope, rule priorities, and built-in default rules. NSGs attach to a subnet or NIC, not directly to a VNet.
 3. Run formatting and static validation with the pinned Terraform/AzureRM provider versions. Review the plan for replacements, broad ingress/egress, and resources that could incur charges.

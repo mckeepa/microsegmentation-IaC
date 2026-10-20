@@ -8,6 +8,8 @@ All ISO files and temporary download data are stored in the ignored repository-r
 
 Ubuntu Server 24.04.5 is the initial client OS and is downloaded as the outer lab guest's bootstrap image too.
 
+The ISO below is used by task 10 and the original task 30 boot-check path. The current unattended Ubuntu client uses a separate checksum-pinned cloud image downloaded by `setup-ubuntu-client.sh`; do not manually install that client from the ISO. The optional Rocky desktop also downloads its own cloud image in task 32.
+
 1. From the project root, run:
 
    ```sh
@@ -45,6 +47,6 @@ The helper checks that the input looks like ISO/UDF media and copies it to `work
 ls -lh work/*.iso
 ```
 
-Use the Ubuntu ISO to install `lab-k8s-01` in Virtual Machine Manager. The Rocky and Windows ISOs are for test guests created inside KubeVirt, not additional Virtual Machine Manager guests. After K3s, KubeVirt, storage, and the CNI are configured, use [task 30 to create the test VMs](../30-create-kubevirt-vms/README.md), then [task 35 to verify isolation](../35-verify-kubernetes-isolation/README.md).
+Task 10 uses the Ubuntu ISO for unattended outer-VM installation; do not create another manual copy in Virtual Machine Manager. Rocky and Windows ISOs are for nested KubeVirt guests. After the cluster is configured, follow [task 30](../30-create-kubevirt-vms/README.md), including its unattended Ubuntu path. Task 35 remains a validation plan, not a compatible automated follow-on runner.
 
 For Windows, attach the matching KubeVirt `virtio-win` driver disk as a CD-ROM during installation and load the storage driver when prompted. Install the guest network driver before testing traffic. Run the Windows guest separately from the Rocky guest to stay within the planned resource budget, and treat Windows Server 2025 support as unverified until the pinned KubeVirt release boots it and the network-policy tests pass.

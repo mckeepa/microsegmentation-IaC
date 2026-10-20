@@ -1,5 +1,7 @@
 # **Home Lab Infrastructure as Code Network Scripts**
 
+> Historical proposal, not implemented modules. The escaped/incomplete examples below are not executable project files. Use the [current architecture](../ARCHITECTURE.md), [task guides](../../scripts/README.md), and [archive notes](README.md).
+
 Declarative network isolation and firewall management architecture using Terraform, VMware NSX, and Kubernetes NetworkPolicies.
 
 ---

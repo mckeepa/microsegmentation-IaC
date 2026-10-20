@@ -1,5 +1,7 @@
 # **VMware NSX to Red Hat OpenShift Microsegmentation Migration Implementation Diagrams**
 
+> Historical diagrams of a proposed migration, not implemented pipelines or current procedures. See the [current design](../HIGH-LEVEL-DESIGN.md), [checkpoint](../IMPLEMENTATION-STATUS.md), and [archive notes](README.md).
+
 ## **1\. Implementation Sequence Diagram**
 
 Detailed execution sequence covering dual-policy staging, workload cutover, validation, and legacy decommissioning.  

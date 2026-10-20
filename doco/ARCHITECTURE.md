@@ -2,7 +2,7 @@
 
 ## Status and Intent
 
-This is a proposed architecture for shared microsegmentation policy intent across VMware NSX, Kubernetes, and Azure VNets/NSGs. Kubernetes isolation is the primary runtime proof of concept on a single-node K3s/KubeVirt lab; OpenShift Virtualization is the preferred longer-term Kubernetes target. It is not yet an implemented or production-validated system.
+This is the target architecture for shared microsegmentation policy intent across VMware NSX, Kubernetes, and Azure VNets/NSGs. The local K3s/OVN-Kubernetes/KubeVirt/CDI infrastructure and Linux guest access are implemented; shared policy adapters, isolation evidence, GitOps delivery, and cloud backends are not complete. OpenShift Virtualization is the preferred longer-term Kubernetes target. See the [checkpoint](IMPLEMENTATION-STATUS.md) for implementation evidence; this is not a command runbook or a production-validated system.
 
 The key design objective is to express workload communication as reviewed, version-controlled policy intent, validate it before deployment, produce platform-specific resources, and test enforcement. The shared definition is not a lowest-common-denominator claim: adapters must identify unsupported or lossy mappings and fail closed rather than silently emit weaker rules.
 
@@ -15,7 +15,7 @@ flowchart LR
     Validator[Static policy validation<br/>and platform capability checks]
     Argo[Argo CD<br/>Kubernetes reconciler]
     K3s[K3s API and control plane]
-    CNI[Selected CNI and policy enforcement<br/>TBD and tested before selection]
+    CNI[OVN-Kubernetes selected<br/>guest policy enforcement tests pending]
     VMI[KubeVirt VM workload<br/>guest traffic through selected network path]
     Terraform[Terraform<br/>separate state per infrastructure backend]
     NSX[VMware NSX<br/>Policy API groups and DFW]
@@ -42,9 +42,9 @@ flowchart LR
 | Git repository | Reviewable source for shared policy intent, platform configuration, and operational documentation | Proposed source of truth |
 | Policy validator/adapters | Validate schema, identity references, rule fields, conflicts, capabilities, and platform-specific output | Required; design and implementation pending |
 | Argo CD | Reconcile approved Kubernetes manifests into the lab cluster | Proposed; not installed |
-| K3s | Lightweight Kubernetes control plane for the initial proof of concept | Proposed first platform |
-| CNI and policy engine | Provide connectivity and enforce supported Kubernetes network policies | **TBD**; must be tested with KubeVirt guest traffic |
-| KubeVirt | Run test VMs as Kubernetes-managed workloads | Proposed; compatibility and sizing to validate |
+| K3s | Lightweight Kubernetes control plane for the initial proof of concept | Installed; pinned configuration checked by task 20 |
+| CNI and policy engine | Provide connectivity and enforce supported Kubernetes network policies | OVN-Kubernetes installed; guest allow/deny testing pending |
+| KubeVirt | Run test VMs as Kubernetes-managed workloads | Installed; guest launch checks passed; no production sizing claim |
 | Terraform | Manage Azure VNet/NSG resources and separately managed NSX resources, each with isolated state | Azure target planned; NSX access/license unavailable |
 | OpenShift Virtualization | Longer-term platform against which portability and policy gaps are evaluated | Target direction, not the first lab deployment |
 
@@ -69,7 +69,7 @@ KubeVirt guests commonly use a pod-backed interface, but the correct binding mod
 
 ## Platform Boundaries and Mapping
 
-- **Kubernetes:** Argo CD owns Kubernetes policy objects. Test pod and KubeVirt guest traffic using the selected CNI; require actual allow/deny tests.
+- **Kubernetes:** Reviewed task scripts currently create lab resources. Argo CD is the planned policy owner after bootstrap, not a deployed reconciler. Test pod and KubeVirt guest traffic using OVN; require actual allow/deny tests.
 - **VMware NSX:** Terraform and the NSX Policy API provider manage NSX groups/security policies when a supported, licensed manager is available. Provider static validation does not prove NSX realization or enforcement.
 - **Azure:** Terraform AzureRM manages VNet address spaces, subnets, NSGs, rules, and subnet/NIC associations. Keep state and deployment scopes explicit. ASGs can provide VM NIC identity within a VNet; CIDRs or other supported constructs may be needed across VNet boundaries.
 - **Future Kubernetes target:** OpenShift Virtualization, normally using OVN-Kubernetes. Confirm support for administrative policy APIs and test guest traffic against the target version.
@@ -88,7 +88,7 @@ K3s's usual Flannel-based configuration is not the OpenShift OVN-Kubernetes data
 
 ## Decisions Still Required
 
-See the [project plan](PROJECT-PLAN.md) for the complete decision register. The architecture cannot be finalized until the policy schema and portability contract, CNI/policy engine, Kubernetes and KubeVirt versions, Azure subscription/scope, lab and cloud network models, test workload, and policy acceptance criteria are chosen.
+See the [project plan](PROJECT-PLAN.md) for the complete decision register. The local CNI, component pins, storage, and guest binding are selected in task 20. The architecture still needs a policy schema/portability contract, runtime isolation evidence, Azure subscription/scope and network model, test workload acceptance criteria, and an OpenShift comparison.
 
 ## Verification Strategy and References
 

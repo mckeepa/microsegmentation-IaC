@@ -1,0 +1,14 @@
+# Local credentials, sessions, and deployment scratch files.
+/.local/
+
+# Generated builds and caches.
+/dist/
+/build/
+/.cache/
+*.tsbuildinfo
+
+# Test coverage and browser-test artifacts.
+/coverage/
+/.nyc_output/
+/playwright-report/
+/test-results/

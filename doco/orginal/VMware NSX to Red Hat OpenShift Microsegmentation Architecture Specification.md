@@ -1,5 +1,7 @@
 # **VMware NSX to Red Hat OpenShift Microsegmentation Architecture Specification**
 
+> Historical target proposal, not a tested migration specification. Blanket binding requirements, policy API availability, and parity claims below are not accepted as verified constraints. Use the [current architecture](../ARCHITECTURE.md) and [archive notes](README.md).
+
 ## **1\. Executive Summary & Strategy**
 
 This document specifies the target architecture, declarative policy translation engine, and phased execution strategy for migrating Virtual Machine (VM) workloads from VMware vSphere/NSX to Red Hat OpenShift Virtualization (KubeVirt). The primary objective is maintaining a zero-trust, default-deny microsegmentation posture across both platforms during transitional co-existence and establishing unified GitOps governance using a vendor-neutral Policy-as-Code schema.

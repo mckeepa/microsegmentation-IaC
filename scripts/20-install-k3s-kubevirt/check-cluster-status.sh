@@ -10,6 +10,14 @@ vm_user="labadmin"
 managed_title="microsegmentation-iac-lab-k8s-01"
 ssh_key="$work_dir/${vm_name}_ed25519"
 known_hosts="$work_dir/${vm_name}_known_hosts"
+infrastructure_only=false
+
+if [[ "${1:-}" == --infrastructure-only && $# == 1 ]]; then
+  infrastructure_only=true
+elif (( $# > 0 )); then
+  printf 'Usage: %s [--infrastructure-only]\n' "${0##*/}" >&2
+  exit 2
+fi
 
 for command_name in virsh ssh jq; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -74,7 +82,7 @@ if ! ssh "${ssh_options[@]}" "$vm_user@$guest_ip" true >/dev/null 2>&1; then
 fi
 
 ssh "${ssh_options[@]}" "$vm_user@$guest_ip" \
-  "sudo -n env CHECK_VM_IP='$guest_ip' bash -s" <<'REMOTE'
+  "sudo -n env CHECK_VM_IP='$guest_ip' CHECK_INFRASTRUCTURE_ONLY='$infrastructure_only' bash -s" <<'REMOTE'
 set -uo pipefail
 
 expected_k3s_version="v1.36.5+k3s1"
@@ -142,7 +150,10 @@ check_ready_node() {
 
 check_ready_pods() {
   sudo -n k3s kubectl get pods -A -o json |
-    jq -e '[.items[] | select(.status.phase != "Succeeded")] as $pods |
+    jq -e --arg scope "$CHECK_INFRASTRUCTURE_ONLY" '[.items[] |
+      select($scope != "true" or
+        (.metadata.namespace as $namespace | ["kube-system", "ovn-kubernetes", "kubevirt", "cdi"] | index($namespace) != null)) |
+      select(.status.phase != "Succeeded")] as $pods |
       ($pods | length) > 0 and
       all($pods[]; .status.phase == "Running" and
         ((.status.containerStatuses // []) | length) > 0 and
@@ -175,7 +186,11 @@ check_ovn_config && pass "OVN pod/service CIDRs and API endpoint" || fail 'OVN C
 check_ovn_release && pass "OVN Helm release $expected_ovn_version" || fail "OVN Helm release $expected_ovn_version"
 check_ovn_values && pass 'OVN identity disabled and image tag pinned' || fail 'OVN Helm values do not match bootstrap settings'
 check_ready_node && pass 'Single Kubernetes node is Ready' || fail 'Single Kubernetes node is not Ready'
-check_ready_pods && pass 'All pods are Running and ready' || fail 'One or more pods are not Running and ready'
+if [[ "$CHECK_INFRASTRUCTURE_ONLY" == true ]]; then
+  check_ready_pods && pass 'Infrastructure pods are Running and ready (workloads excluded)' || fail 'One or more infrastructure pods are not Running and ready'
+else
+  check_ready_pods && pass 'All pods are Running and ready' || fail 'One or more pods are not Running and ready'
+fi
 check_kubevirt && pass "KubeVirt $expected_kubevirt_version is Deployed" || fail "KubeVirt $expected_kubevirt_version is not Deployed or version mismatches"
 check_cdi && pass "CDI $expected_cdi_version is Deployed" || fail "CDI $expected_cdi_version is not Deployed or version mismatches"
 

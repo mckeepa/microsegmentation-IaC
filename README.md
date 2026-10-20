@@ -6,7 +6,7 @@ The project is intended to test how workload identity, default-deny policy, expl
 
 ## Project Status
 
-Documentation and design planning. No installable IaC modules or tested deployment automation are present yet. Host checks found 16 logical CPUs, 62 GiB RAM, Intel nested virtualization enabled, and `/dev/kvm` present. The latest storage check found 461 GiB free on the root filesystem, above the 150 GiB planning target; see the [lab setup](doco/LAB-SETUP.md) before creating VMs.
+The single-node K3s/OVN-Kubernetes/KubeVirt/CDI lab is deployed. Rocky Linux 10 and the Ubuntu client have verified key-based administration; Ubuntu provisioning is unattended and JSON-configured. A separate Rocky 9 desktop provides Firefox and tunneled RDP, and task 45 provides optional monitoring dashboards. Windows installation and isolation testing remain pending. Azure and NSX adapters are planned, not deployed or runtime-verified.
 
 For the current implementation checkpoint, see [Implementation status](doco/IMPLEMENTATION-STATUS.md).
 
@@ -15,11 +15,13 @@ For the current implementation checkpoint, see [Implementation status](doco/IMPL
 After a power loss or break, run these from the repository root on the QEMU/KVM host:
 
 1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](doco/IMPLEMENTATION-STATUS.md) for completed tasks, known blockers, and the resume order.
-2. Run the read-only progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
+2. Run the progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
 
    ```sh
    bash scripts/check-lab-progress.sh
    ```
+
+   If the managed outer VM is powered off, the checker asks permission to start it, then waits for networking and SSH. It does not start nested guests. Exit code `0` means the inventory completed, not that every deployment stage passed; read the `WARN`, `BLOCKED`, and `NEXT:` lines.
 
 3. Follow the `NEXT:` step. The task guides in [scripts/README.md](scripts/README.md) cover troubleshooting and resizing the outer VM disk.
 4. Update the checkpoint file when a task completes or a new blocker is found.
@@ -28,6 +30,8 @@ The task scripts preserve partial state and resume project-owned resources. Do n
 
 ## Documentation
 
+- [Lab Switchboard: containerized VM control and dashboard portal](lab-switchboard/README.md)
+- [Start or resume the lab: task guides](scripts/README.md)
 - [Documentation index](doco/README.md)
 - [Implementation status and resume checkpoint](doco/IMPLEMENTATION-STATUS.md)
 - [Architecture](doco/ARCHITECTURE.md)
@@ -49,9 +53,9 @@ The task scripts preserve partial state and resume project-owned resources. Do n
 
 - The host is QEMU/KVM-based and there is no VMware license, so NSX resources cannot currently be deployed or runtime-validated.
 - Azure deployment requires an Azure subscription, permissions, cost controls, and a selected region; these are not yet confirmed.
-- The K3s CNI is not installed yet. Upstream OVN-Kubernetes is the first candidate to better align isolation testing with OpenShift; K3s compatibility must be verified before installation. Bundled Flannel is a documented lower-fidelity fallback.
+- Upstream OVN-Kubernetes is installed and its pinned configuration has passed lab checks. This is not proof of OpenShift dataplane parity or network-policy enforcement; isolation tests are still pending. Flannel is a design fallback, not the deployed CNI.
 - Disk capacity currently exceeds the lab planning target; monitor free space as VM images and snapshots grow.
-- Versions, storage, lab networking, VM workload, and acceptance criteria remain to be confirmed. The documentation marks these as decisions rather than presenting untested commands as a working procedure.
+- Local component versions and task-specific configuration are recorded in the task guides. Cross-platform policy contracts, cloud access, and production acceptance criteria still require decisions. Design proposals are not deployment instructions.
 
 ## Scope
 
@@ -59,4 +63,4 @@ The initial scope is a single-node, disposable K3s/KubeVirt lab that demonstrate
 
 ## Lab VM Plan
 
-Start with one outer QEMU/KVM guest for K3s and KubeVirt, then create two small test VMs inside KubeVirt for client/server isolation tests. See the [lab setup guide](doco/LAB-SETUP.md) and the [setup task guides](scripts/README.md). Do not create separate K3s control-plane and worker VMs for the initial proof of concept.
+Use one outer QEMU/KVM guest for K3s and KubeVirt, then an Ubuntu client, Rocky Linux server, and Windows Server evaluation guest inside KubeVirt for isolation tests. The optional desktop is separate from this test matrix. See the [lab setup guide](doco/LAB-SETUP.md) and the [setup task guides](scripts/README.md). Do not create separate K3s control-plane and worker VMs for the initial proof of concept.

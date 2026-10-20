@@ -1,5 +1,7 @@
 # VMware NSX to KubeVirt Microsegmentation Feasibility Analysis
 
+> Historical proposal, not verified platform equivalence or deployment guidance. Policy hierarchy and binding assumptions below require platform-specific testing; the [current architecture](../ARCHITECTURE.md) takes precedence. See the [archive notes](README.md).
+
 ## 1\. Overview & Strategy
 
 This document details a uniform, port-focused microsegmentation firewall rule hierarchy across VMware NSX and Kubernetes/OpenShift (KubeVirt). The strategy relies strictly on Layer 3/Layer 4 traffic isolation and a default-deny security posture without the overhead or complexity of Layer 7 payload inspection.

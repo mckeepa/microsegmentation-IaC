@@ -1,5 +1,7 @@
 # **Home Lab Infrastructure as Code Setup Guide**
 
+> Historical reference, not a current runbook. Do not execute these unpinned examples or change host modules from this document. Use the [current task guides](../../scripts/README.md) and [archive notes](README.md).
+
 # **Software Download Links and Prerequisites**
 
 * **K3s (Lightweight Kubernetes Distribution)**  

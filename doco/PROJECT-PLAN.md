@@ -1,5 +1,7 @@
 # Project Plan and Open Decisions
 
+This is the target roadmap. Local infrastructure and Linux access are implemented; isolation evidence, Windows installation, and cross-platform policy delivery remain incomplete. For completed tasks and runnable next steps, use the [implementation checkpoint](IMPLEMENTATION-STATUS.md), not the phase table alone.
+
 ## Agreed Direction
 
 - Build a rapid proof of concept on the current Linux workstation using QEMU/KVM.
@@ -8,7 +10,7 @@
 - Use GitOps for Kubernetes resources and separate Terraform state/provider workflows for Azure and NSX.
 - VMware licensing is not available, so NSX runtime deployment cannot be a gate for the initial proof of concept; static adapter checks remain in scope.
 - Azure is a required target; subscription, region, budget, and access are not yet confirmed.
-- Current host snapshot: 16 logical CPUs, 62 GiB RAM, nested Intel virtualization enabled, `/dev/kvm` present, and 461 GiB free on the root filesystem (87% used; checked 2026-10-18).
+- Historical host snapshot (2026-10-18): 16 logical CPUs, 62 GiB RAM, nested Intel virtualization enabled, `/dev/kvm` present, and 461 GiB free on the root filesystem. Rerun preflight for current capacity.
 - Plan for 150 GiB free on the filesystem used for VM storage before building the lab.
 
 ## Phased Plan
@@ -28,16 +30,16 @@
 
 | Decision | Why it matters | Current status |
 | --- | --- | --- |
-| CNI and policy engine for K3s | Controls enforcement semantics and compatibility with KubeVirt guest traffic | Recommended first candidate: upstream OVN-Kubernetes, subject to verified K3s/Kubernetes version and install compatibility |
+| CNI and policy engine for K3s | Controls enforcement semantics and compatibility with KubeVirt guest traffic | Upstream OVN-Kubernetes installed; configuration/health checked; guest isolation evidence pending |
 | Flannel fallback | Provides a simpler route to test NetworkPolicy semantics if upstream OVN-Kubernetes cannot be made supportable | Explicit lower-fidelity fallback; results must not be reported as OpenShift dataplane parity |
 | OpenShift dataplane parity | Red Hat packages and manages OVN-Kubernetes as part of the platform; upstream OVN on K3s cannot verify all OpenShift integration/features | Document the boundary; validate exact platform behavior later if an OpenShift cluster is available |
-| Kubernetes/K3s and KubeVirt versions | Determines API support and component compatibility | Pin a compatible K3s/Kubernetes, KubeVirt, `virtctl`, and CDI release set before installation |
-| Guest distribution and VM sizing | Determines nested virtualization, resource use, and repeatability | Provisional sizing in lab setup; OS/version open |
+| Kubernetes/K3s and KubeVirt versions | Determines API support and component compatibility | Versions are pinned and checked by task 20; review the complete set before upgrades |
+| Guest distribution and VM sizing | Determines nested virtualization, resource use, and repeatability | Ubuntu outer VM/client, Rocky 10 test server, Windows 2025 Evaluation; optional separate Rocky 9 desktop; allocations in lab setup |
 | Guest OS validation matrix | Confirms policy behavior is not accidentally specific to one guest OS | Ubuntu client, Rocky Linux 10.2 server, Windows Server 2025 Evaluation server; Windows compatibility and evaluation access to confirm |
-| KubeVirt binding mode | Changes the guest network path and where policy is enforced | Recommended first pass: pod network with masquerade; verify both ingress and egress on guest traffic |
-| Storage backend and disk layout | VM image growth is the immediate host constraint | Recommended first pass: K3s bundled local-path for a disposable single-node cluster; no HA/migration claim |
-| KubeVirt image import | Determines how Ubuntu/Rocky/Windows media and disk images become PVCs | Recommended first pass: compatible CDI plus `virtctl image-upload`; confirm PVC class/access mode and upload-proxy route |
-| Lab network and address plan | Prevents conflicts and controls access to the cluster | Open; use isolated network for initial tests |
+| KubeVirt binding mode | Changes the guest network path and where policy is enforced | Pod network with masquerade selected; ingress/egress policy testing pending |
+| Storage backend and disk layout | VM image growth is the immediate host constraint | local-path selected; outer disk expanded to 130 GiB; no HA/migration claim |
+| KubeVirt image import | Determines how Ubuntu/Rocky/Windows media and disk images become PVCs | CDI plus `virtctl image-upload` implemented; Ubuntu and desktop cloud-image paths verified |
+| Lab network and address plan | Prevents conflicts and controls access to the cluster | Local libvirt NAT/OVN baseline documented in task 20; cloud/routed network design remains open |
 | Test workload and policy cases | Makes success measurable rather than subjective | Open; choose one simple client/server flow and required infrastructure flows |
 | Policy source format | Affects review and cross-platform behavior | Shared policy intent is required; render Kubernetes manifests and separate Azure/NSX Terraform outputs |
 | Shared policy contract and adapter behavior | Determines whether all three targets express the same intent without unsafe semantic loss | Required; define a portable L3/L4 baseline and explicit capability failures |

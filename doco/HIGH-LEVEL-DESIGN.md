@@ -1,10 +1,47 @@
 # High-Level Design
 
+This document describes the target design, not a setup sequence. Local infrastructure is implemented; policy adapters, Argo CD, and Azure/NSX deployment remain planned. Use the [checkpoint](IMPLEMENTATION-STATUS.md) and [task guides](../scripts/README.md) for current commands.
+
 ## Deployment Shape
 
 The first runtime iteration is intentionally small: one QEMU/KVM guest acts as a single-node K3s cluster. KubeVirt runs disposable test VMs on that cluster. A shared, version-controlled policy intent is validated and then rendered to Kubernetes resources, NSX policy resources, and Azure VNet/NSG resources. Argo CD reconciles Kubernetes objects; Terraform manages Azure and NSX infrastructure independently.
 
 This topology is for fast functional learning. It does not provide node failure tolerance, a production-grade control plane, or a validated migration path.
+
+## Deployed Lab Layout
+
+The boxes show where components run, not proof of traffic isolation. Optional services share the same outer VM's capacity. Argo CD and the Azure/NSX backends are planned and are not shown as deployed components.
+
+```mermaid
+flowchart TB
+	subgraph host[Physical Linux host - QEMU/KVM]
+		terminal[VS Code terminal<br/>Host scripts and virtctl]
+		subgraph outer[Outer Ubuntu VM - lab-k8s-01]
+			cockpit[Cockpit<br/>Outer-VM monitoring]
+			subgraph cluster[Single-node K3s - OVN, KubeVirt, CDI]
+				subgraph tests[netpol-test namespace]
+					client[netpol-client<br/>Ubuntu - unattended cloud-init]
+					rocky[netpol-server-rocky<br/>Rocky 10 - installed]
+					windows[netpol-server-windows<br/>Windows - installation pending]
+				end
+				subgraph desktopns[rocky-desktop namespace - optional]
+					desktop[Rocky 9 - XFCE and Firefox<br/>SSH, VNC and tunneled RDP]
+				end
+				subgraph dashboardns[lab-dashboard namespace - optional]
+					headlamp[Headlamp<br/>Kubernetes resource views]
+				end
+				storage[local-path PVC storage<br/>Nested disks live on the outer VM]
+			end
+		end
+	end
+	terminal -->|SSH and Kubernetes API helpers| outer
+	client --- storage
+	rocky --- storage
+	windows --- storage
+	desktop --- storage
+```
+
+Use the [checkpoint](IMPLEMENTATION-STATUS.md) for dated runtime state and the [lab setup guide](LAB-SETUP.md) for resource allocations. The desktop is separate from the three-guest policy-test matrix.
 
 ## Logical Flow
 
@@ -38,13 +75,13 @@ Terraform and Argo CD must not concurrently own the same objects. The shared pol
 
 ## Network and Storage Design
 
-**Network design (TBD):** use an isolated lab network for the first tests. Decide how the K3s guest reaches package registries and how an operator reaches the API and test services. Record whether the cluster uses NAT, a bridged network, or a routed VLAN. Avoid exposing the cluster API or test VMs to untrusted networks.
+**Local network baseline:** the outer VM uses libvirt NAT; nested test VMs use the pod network with masquerade. Host helpers discover the outer address and use SSH/Kubernetes API access. Do not use the nested `10.0.2.2` address as a direct host SSH target. Wider routed/cloud network design remains open. Avoid exposing management interfaces to untrusted networks.
 
-**CNI and policy enforcement (TBD):** evaluate upstream OVN-Kubernetes first because OpenShift uses it. Verify compatibility with the chosen K3s/Kubernetes and KubeVirt releases, then prove guest traffic enforcement and observable denies. K3s's bundled Flannel plus embedded policy controller is the fallback if OVN cannot be made supportable; that validates NetworkPolicy behavior but not OpenShift dataplane parity.
+**CNI baseline:** upstream OVN-Kubernetes is installed and its pinned configuration is checked by task 20. Guest traffic enforcement and observable denies still need task 35 evidence. Flannel plus K3s's embedded policy controller is a design fallback, not the deployed configuration. Neither baseline alone proves OpenShift dataplane parity.
 
 **Azure network design (TBD):** define address space, regions, subnet boundaries, peering/routing assumptions, NSG association points, and management ingress. NSGs attach to subnets or NICs, not directly to VNets. Account for Azure's built-in allow rules when implementing deny-by-default and validate effective rules at the NIC.
 
-**Storage (TBD):** choose a KubeVirt-compatible storage class and define where VM images live, how much they can grow, and how they are backed up. The latest host check is above the 150 GiB planning target, but free space must be monitored as VM images and snapshots grow; see [lab setup](LAB-SETUP.md).
+**Storage baseline:** K3s local-path storage holds nested guest PVCs on the outer VM. This single-node storage does not provide shared-disk migration or HA. Image integrity/import checks are in the task guides; disk growth and backups remain operational responsibilities. Check current host and outer-VM capacity rather than relying on historical snapshots; see [lab setup](LAB-SETUP.md).
 
 ## Validation and Completion Criteria
 
