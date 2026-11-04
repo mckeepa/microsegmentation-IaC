@@ -2,7 +2,7 @@
 
 ## Status and Intent
 
-This is the target architecture for shared microsegmentation policy intent across VMware NSX, Kubernetes, and Azure VNets/NSGs. The local K3s/OVN-Kubernetes/KubeVirt/CDI infrastructure and Linux guest access are implemented; shared policy adapters, isolation evidence, GitOps delivery, and cloud backends are not complete. OpenShift Virtualization is the preferred longer-term Kubernetes target. See the [checkpoint](IMPLEMENTATION-STATUS.md) for implementation evidence; this is not a command runbook or a production-validated system.
+This is the target architecture for shared microsegmentation policy intent across VMware NSX, Kubernetes, and Azure VNets/NSGs. The local K3s/OVN-Kubernetes/KubeVirt/CDI infrastructure and Linux guest access are implemented; shared policy adapters, isolation evidence, GitOps delivery, and cloud backends are not complete. OpenShift Virtualization is the preferred longer-term Kubernetes target. See the [checkpoint](IMPLEMENTATION-STATUS.md) for implementation evidence; this is not a command runbook or a production-validated system. The long-lived policy plane is documented in [microsegmentation-iac](../microsegmentation-iac/README.md).
 
 The key design objective is to express workload communication as reviewed, version-controlled policy intent, validate it before deployment, produce platform-specific resources, and test enforcement. The shared definition is not a lowest-common-denominator claim: adapters must identify unsupported or lossy mappings and fail closed rather than silently emit weaker rules.
 

@@ -1,4 +1,7 @@
 $ErrorActionPreference = 'Stop'
+$scriptPath = $MyInvocation.MyCommand.Path
+if (-not $scriptPath) { $scriptPath = 'configure-windows.ps1' }
+$seedRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($scriptPath))
 $logDirectory = 'C:\ProgramData\microsegmentation-iac'
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 Start-Transcript -Path "$logDirectory\setup.log" -Append | Out-Null
@@ -59,4 +62,12 @@ if (-not (Get-NetFirewallRule -Name 'Microsegmentation-Lab-SSH' -ErrorAction Sil
     New-NetFirewallRule -Name 'Microsegmentation-Lab-SSH' -DisplayName 'Lab key-authenticated SSH' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 22 | Out-Null
 }
 New-Item -ItemType File -Path "$logDirectory\setup-complete" -Force | Out-Null
+$pantherLogDirectory = Join-Path $logDirectory 'panther'
+New-Item -ItemType Directory -Path $pantherLogDirectory -Force | Out-Null
+foreach ($logName in @('setuperr.log', 'setupact.log')) {
+    $source = Join-Path 'C:\Windows\Panther' $logName
+    if (Test-Path $source) {
+        Copy-Item $source (Join-Path $pantherLogDirectory $logName) -Force
+    }
+}
 Stop-Transcript | Out-Null

@@ -6,13 +6,22 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/../45-monitoring-dashboard/common.sh"
 config="$script_dir/windows-server.json"
 mode=--plan
+retry_clean_disk=false
 while (( $# > 0 )); do
   case "$1" in
     --config) (( $# >= 2 )) || exit 2; config="$2"; shift 2 ;;
     --plan|--prepare|--apply|--verify|--ssh|--vnc) mode="$1"; shift ;;
-    *) printf 'Usage: %s [--config file.json] [--plan|--prepare|--apply|--verify|--ssh|--vnc]\n' "${0##*/}" >&2; exit 2 ;;
+    --retry-clean-disk)
+      (( $# >= 2 )) || { printf 'Error: --retry-clean-disk requires a PVC name.\n' >&2; exit 2; }
+      retry_clean_disk=true
+      retry_disk="$2"
+      shift 2 ;;
+    *) printf 'Usage: %s [--config file.json] [--plan|--prepare|--apply|--verify|--ssh|--vnc] [--retry-clean-disk <pvc-name>]\n' "${0##*/}" >&2; exit 2 ;;
   esac
 done
+if [[ "$retry_clean_disk" == true ]]; then
+  [[ "$retry_disk" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { printf 'Error: invalid clean disk name.\n' >&2; exit 2; }
+fi
 for program in jq node ssh-keygen xmllint git openssl; do
   command -v "$program" >/dev/null || { printf 'Error: %s is required.\n' "$program" >&2; exit 1; }
 done
@@ -72,46 +81,46 @@ encoded_powershell() { printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 -w
 if [[ "$mode" == --ssh ]]; then windows_ssh --local-ssh-opts=-tt; exit; fi
 if [[ "$mode" == --vnc ]]; then exec "$virtctl" vnc netpol-server-windows -n netpol-test; fi
 provisioning=$(jq -r '.metadata.annotations["microsegmentation-lab/provisioning"] // ""' <<< "$vm_json")
-if [[ "$mode" == --apply && "$provisioning" != windows-unattended ]]; then
+if [[ "$mode" == --apply ]]; then
   existing_vmi=$(dashboard_kubectl get vmi netpol-server-windows -n netpol-test --ignore-not-found -o name)
   [[ -z "$existing_vmi" ]] || { printf 'Error: Windows is already running; stop and inspect it before preparing installation.\n' >&2; exit 1; }
-  jq -e 'any(.spec.template.spec.volumes[]; .name == "osdisk" and .persistentVolumeClaim.claimName == "netpol-server-windows-disk") and any(.spec.template.spec.domain.devices.disks[]; .name == "installer" and .bootOrder == 1)' <<< "$vm_json" >/dev/null || {
-    printf 'Error: refusing conversion of an unexpected/already-installed Windows disk.\n' >&2; exit 1;
-  }
   installer=$(dashboard_kubectl get pvc windows-installer-iso -n netpol-test -o json)
   jq -e '.status.phase == "Bound" and .metadata.annotations["cdi.kubevirt.io/storage.condition.running.reason"] == "Completed"' <<< "$installer" >/dev/null || exit 1
-  for target in 'netpol-test netpol-client' 'rocky-desktop rocky-desktop'; do
-    read -r target_namespace target_vm <<< "$target"
-    if [[ -n "$(dashboard_kubectl get namespace "$target_namespace" --ignore-not-found -o name)" ]]; then
-      dashboard_owned namespace "$target_namespace"
-      dashboard_owned vm "$target_vm" -n "$target_namespace"
-      instance=$(dashboard_kubectl get vmi "$target_vm" -n "$target_namespace" --ignore-not-found -o name)
-      if [[ -n "$instance" ]]; then
-        "$virtctl" stop "$target_vm" -n "$target_namespace"
-        dashboard_kubectl wait --for=delete "vmi/$target_vm" -n "$target_namespace" --timeout=180s
-      fi
-    fi
-  done
   running=$(dashboard_kubectl get vmi -A -o json)
   jq -e '.items | length == 0' <<< "$running" >/dev/null || { printf 'Error: stop other nested guests before Windows setup.\n' >&2; exit 1; }
   resources=$(dashboard_ssh "awk '/MemAvailable:/ {print \$2}' /proc/meminfo; df -Pk / | awk 'NR == 2 {print \$4}'")
   read -r available_kib <<< "$resources"
   free_kib=$(tail -n 1 <<< "$resources")
   (( available_kib >= 6 * 1048576 && free_kib >= 50 * 1048576 )) || { printf 'Error: at least 6 GiB available RAM and 50 GiB guest disk free required.\n' >&2; exit 1; }
-  new_disk=$(dashboard_kubectl get pvc netpol-server-windows-unattended-disk -n netpol-test --ignore-not-found -o json)
-  if [[ -n "$new_disk" ]]; then
-    printf 'Error: unattended disk already exists without a recognized VM marker; inspect it before retrying. No disk overwritten.\n' >&2; exit 1
-  fi
   dashboard_owned secret windows-unattended-seed -n netpol-test
   dashboard_ssh 'sudo -n k3s kubectl apply -f -' < "$work_dir/windows-unattended/secret.json"
-  jq -n '{apiVersion:"v1",kind:"PersistentVolumeClaim",metadata:{name:"netpol-server-windows-unattended-disk",namespace:"netpol-test",labels:{"microsegmentation-lab/managed-by":"microsegmentation-iac"}},spec:{storageClassName:"local-path",accessModes:["ReadWriteOnce"],volumeMode:"Filesystem",resources:{requests:{storage:"40Gi"}}}}' |
-    dashboard_ssh 'sudo -n k3s kubectl create -f -'
+  if [[ "$provisioning" != windows-unattended ]]; then
+    jq -e 'any(.spec.template.spec.volumes[]; .name == "osdisk" and .persistentVolumeClaim.claimName == "netpol-server-windows-disk") and any(.spec.template.spec.domain.devices.disks[]; .name == "installer" and .bootOrder == 1)' <<< "$vm_json" >/dev/null || {
+      printf 'Error: refusing conversion of an unexpected/already-installed Windows disk.\n' >&2; exit 1;
+    }
+    new_disk=$(dashboard_kubectl get pvc netpol-server-windows-unattended-disk -n netpol-test --ignore-not-found -o json)
+    if [[ -n "$new_disk" ]]; then
+      printf 'Error: unattended disk already exists without a recognized VM marker; inspect it before retrying. No disk overwritten.\n' >&2; exit 1
+    fi
+    jq -n '{apiVersion:"v1",kind:"PersistentVolumeClaim",metadata:{name:"netpol-server-windows-unattended-disk",namespace:"netpol-test",labels:{"microsegmentation-lab/managed-by":"microsegmentation-iac"}},spec:{storageClassName:"local-path",accessModes:["ReadWriteOnce"],volumeMode:"Filesystem",resources:{requests:{storage:"40Gi"}}}}' |
+      dashboard_ssh 'sudo -n k3s kubectl create -f -'
+  fi
+  if [[ "$retry_clean_disk" == true ]]; then
+    current_osdisk=$(jq -r '.spec.template.spec.volumes[] | select(.name == "osdisk") | .persistentVolumeClaim.claimName' <<< "$vm_json")
+    [[ "$current_osdisk" != "$retry_disk" ]] || { printf 'Error: the clean retry disk is already active.\n' >&2; exit 1; }
+    existing_retry=$(dashboard_kubectl get pvc "$retry_disk" -n netpol-test --ignore-not-found -o json)
+    if [[ -n "$existing_retry" ]]; then
+      printf 'Error: clean retry disk %s already exists; inspect it before using it.\n' "$retry_disk" >&2; exit 1
+    fi
+    jq -n --arg disk "$retry_disk" '{apiVersion:"v1",kind:"PersistentVolumeClaim",metadata:{name:$disk,namespace:"netpol-test",labels:{"microsegmentation-lab/managed-by":"microsegmentation-iac"}},spec:{storageClassName:"local-path",accessModes:["ReadWriteOnce"],volumeMode:"Filesystem",resources:{requests:{storage:"40Gi"}}}}' |
+      dashboard_ssh 'sudo -n k3s kubectl create -f -'
+  fi
   vm_json=$(dashboard_kubectl get vm netpol-server-windows -n netpol-test -o json)
-  patch=$(jq -cn --argjson vm "$vm_json" --slurpfile cfg "$config" '$cfg[0] as $cfg |
+  patch=$(jq -cn --argjson vm "$vm_json" --slurpfile cfg "$config" --arg disk "${retry_disk:-netpol-server-windows-unattended-disk}" '$cfg[0] as $cfg |
     [{op:"test",path:"/metadata/uid",value:$vm.metadata.uid},{op:"test",path:"/metadata/resourceVersion",value:$vm.metadata.resourceVersion},
     {op:"add",path:"/metadata/annotations",value:(($vm.metadata.annotations // {}) + {"microsegmentation-lab/provisioning":"windows-unattended"})},
     {op:"replace",path:"/spec/template/spec/domain/devices/disks",value:[{name:"installer",cdrom:{bus:"sata",readonly:true},bootOrder:1},{name:"osdisk",disk:{bus:"sata"},bootOrder:2},{name:"virtio-drivers",cdrom:{bus:"sata",readonly:true}},{name:"answer",cdrom:{bus:"sata",readonly:true}}]},
-    {op:"replace",path:"/spec/template/spec/volumes",value:[{name:"installer",persistentVolumeClaim:{claimName:$cfg.installerPvc}},{name:"osdisk",persistentVolumeClaim:{claimName:$cfg.disk.pvcName}},{name:"virtio-drivers",containerDisk:{image:$cfg.virtioImage}},{name:"answer",sysprep:{secret:{name:"windows-unattended-seed"}}}]},
+    {op:"replace",path:"/spec/template/spec/volumes",value:[{name:"installer",persistentVolumeClaim:{claimName:$cfg.installerPvc}},{name:"osdisk",persistentVolumeClaim:{claimName:$disk}},{name:"virtio-drivers",containerDisk:{image:$cfg.virtioImage}},{name:"answer",sysprep:{secret:{name:"windows-unattended-seed"}}}]},
     {op:"replace",path:"/spec/template/spec/domain/devices/interfaces",value:[{name:"default",masquerade:{},ports:[{name:"ssh",port:22,protocol:"TCP"},{name:"allowed-http",port:80,protocol:"TCP"},{name:"denied-http",port:8081,protocol:"TCP"}]}]}]
   ')
   dashboard_kubectl patch vm netpol-server-windows -n netpol-test --type=json -p "$patch"

@@ -161,9 +161,15 @@ printf 'PASS SSH reachable at %s\n' "$guest_ip"
 guest_disk=$(ssh "${ssh_options[@]}" "$destination" 'df -Pk /')
 guest_free_kib=$(awk 'NR == 2 { print $4 }' <<< "$guest_disk")
 if [[ "$guest_free_kib" =~ ^[0-9]+$ ]]; then
-  printf 'Guest root free space: %s GiB\n' "$((guest_free_kib / 1024 / 1024))"
+  guest_free_gib=$((guest_free_kib / 1024 / 1024))
+  printf 'Guest root free space: %s GiB\n' "$guest_free_gib"
   if (( guest_free_kib < minimum_guest_free_kib )); then
-    recommend "Expand the outer VM disk: bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh 130"
+    printf 'WARN guest root free space is below the task 30 headroom target (84 GiB).\n'
+    if [[ "$disk_capacity_bytes" =~ ^[0-9]+$ ]] && (( disk_capacity_bytes >= 130 * 1024 * 1024 * 1024 )); then
+      recommend "Review guest disk usage and libvirt pool capacity before choosing a larger total disk size; the outer disk is already at least 130 GiB. See scripts/10-create-lab-vm/README.md#resize-the-existing-vm-disk."
+    else
+      recommend "Review guest disk usage, then expand the outer disk to at least 130 GiB if host storage permits: bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh 130"
+    fi
   fi
 else
   printf 'WARN could not parse guest root free space\n'
@@ -255,6 +261,7 @@ image_pull_error=$(jq -r '[.items[] | select(.kind == "Pod") | ((.status.initCon
 vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine")] | length' <<< "$resources_json")
 stopped_vm_count=$(jq '[.items[] | select(.kind == "VirtualMachine") | select(.status.printableStatus == "Stopped")] | length' <<< "$resources_json")
 failed_vmi_count=$(jq '[.items[] | select(.kind == "VirtualMachineInstance") | select(.status.phase == "Failed")] | length' <<< "$resources_json")
+failed_vmi_names=$(jq -r '.items[] | select(.kind == "VirtualMachineInstance") | select(.status.phase == "Failed") | .metadata.name' <<< "$resources_json")
 task30_complete=false
 ubuntu_cloud_init=$(jq -r 'any(.items[]; .kind == "VirtualMachine" and .metadata.name == "netpol-client" and .metadata.annotations["microsegmentation-lab/provisioning"] == "ubuntu-cloud-init")' <<< "$resources_json")
 if (( vm_count == 3 && stopped_vm_count == 3 && failed_vmi_count == 0 )); then
@@ -271,7 +278,19 @@ elif jq -e '[.items[] | select(.kind == "DataVolume") | select(.status.phase == 
   recommend "Use and validate the direct-PVC guest-disk path in scripts/30-create-kubevirt-vms/create-test-vms.sh before resuming."
 elif (( failed_vmi_count > 0 )); then
   printf 'BLOCKED task 30 has a failed VMI; stopped VM resources do not prove a successful boot check.\n'
-  recommend "Inspect the failed task 30 VMI and launcher events before resuming: bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh"
+  printf 'Inspect the failed VMI(s) and namespace events from the physical host:\n'
+  while IFS= read -r failed_vmi; do
+    [[ -n "$failed_vmi" ]] || continue
+    printf '  '
+    printf '%q ' ssh -i "$ssh_key" -o "UserKnownHostsFile=$known_hosts" "$destination" \
+      "sudo -n k3s kubectl describe vmi $failed_vmi -n $namespace"
+    printf '\n'
+  done <<< "$failed_vmi_names"
+  printf '  '
+  printf '%q ' ssh -i "$ssh_key" -o "UserKnownHostsFile=$known_hosts" "$destination" \
+    "sudo -n k3s kubectl get events -n $namespace --sort-by=.lastTimestamp"
+  printf '\n'
+  recommendation="Inspect failed VMI details and namespace events using the commands above before resuming."
 elif [[ "$unhealthy_pods" != 0 ]]; then
   recommend "Resolve cluster or launcher pod warnings before resuming task 30."
 elif [[ "$ubuntu_cloud_init" == true ]]; then

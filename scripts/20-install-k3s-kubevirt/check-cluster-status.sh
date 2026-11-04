@@ -160,6 +160,46 @@ check_ready_pods() {
         all(.status.containerStatuses[]; .ready == true))' >/dev/null
 }
 
+report_unready_pods() {
+  local scope="$1"
+  local pods_json namespace pod phase reason containers domain
+  pods_json=$(sudo -n k3s kubectl get pods -A -o json) || return 1
+  while IFS=$'\t' read -r namespace pod phase reason containers domain; do
+    [[ -n "$pod" ]] || continue
+    printf '  UNHEALTHY %s/%s: phase=%s reason=%s containers=%s\n' \
+      "$namespace" "$pod" "$phase" "$reason" "${containers:--}"
+    printf '    Diagnose: sudo -n k3s kubectl describe pod %q -n %q\n' "$pod" "$namespace"
+    printf '    Events:   sudo -n k3s kubectl get events -n %q --sort-by=.lastTimestamp\n' "$namespace"
+    if [[ -n "$domain" ]]; then
+      printf '    KubeVirt guest %q: inspect with sudo -n k3s kubectl describe vmi %q -n %q\n' \
+        "$domain" "$domain" "$namespace"
+      printf "      VMI owner UID: sudo -n k3s kubectl get vmi %q -n %q -o json | jq -r --arg vm '%s' '[.metadata.ownerReferences[]? | select(.controller == true and .kind == \"VirtualMachine\" and .name == \$vm) | .uid] | first // \"NO_MATCHING_OWNER\"'\n" \
+        "$domain" "$namespace" "$domain"
+      printf "      VM UID/status: sudo -n k3s kubectl get vm %q -n %q -o json | jq -r '[.metadata.uid, .status.printableStatus] | @tsv'\n" \
+        "$domain" "$namespace"
+      printf '      Recovery: inspect events first. If VMI phase is Failed, VM status is Stopped, and the owner UID above equals the VM UID, normally delete only the VMI: sudo -n k3s kubectl delete vmi %q -n %q. This preserves the VM and PVCs; correct any reported admission cause before restarting.\n' \
+        "$domain" "$namespace"
+    fi
+  done < <(jq -r --arg scope "$scope" '
+    .items[] |
+    select($scope != "true" or
+      (.metadata.namespace as $namespace | ["kube-system", "ovn-kubernetes", "kubevirt", "cdi"] | index($namespace) != null)) |
+    select(.status.phase != "Succeeded") |
+    select(.status.phase != "Running" or
+      ((.status.containerStatuses // []) | length) == 0 or
+      any((.status.containerStatuses // [])[]; .ready != true)) |
+    [
+      .metadata.namespace,
+      .metadata.name,
+      (.status.phase // "Unknown"),
+      (.status.reason // "none"),
+      ([((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[] |
+        "\(.name):\(.state.waiting.reason // .state.terminated.reason // (if .ready then "ready" else "not-ready" end))"] | join(",")),
+      ([.metadata.ownerReferences[]? | select(.kind == "VirtualMachineInstance") | .name][0] // .metadata.labels["kubevirt.io/domain"] // "")
+    ] | @tsv
+  ' <<< "$pods_json")
+}
+
 check_kubevirt() {
   local phase image
   phase=$(sudo -n k3s kubectl get kubevirt kubevirt -n kubevirt -o jsonpath='{.status.phase}') || return 1
@@ -187,9 +227,21 @@ check_ovn_release && pass "OVN Helm release $expected_ovn_version" || fail "OVN 
 check_ovn_values && pass 'OVN identity disabled and image tag pinned' || fail 'OVN Helm values do not match bootstrap settings'
 check_ready_node && pass 'Single Kubernetes node is Ready' || fail 'Single Kubernetes node is not Ready'
 if [[ "$CHECK_INFRASTRUCTURE_ONLY" == true ]]; then
-  check_ready_pods && pass 'Infrastructure pods are Running and ready (workloads excluded)' || fail 'One or more infrastructure pods are not Running and ready'
+  if check_ready_pods; then
+    pass 'Infrastructure pods are Running and ready (workloads excluded)'
+  else
+    fail 'One or more infrastructure pods are not Running and ready'
+    printf 'Unhealthy infrastructure pod details and recovery commands (run kubectl commands inside lab-k8s-01; connect with bash scripts/10-create-lab-vm/login-lab-vm.sh):\n'
+    report_unready_pods true
+  fi
 else
-  check_ready_pods && pass 'All pods are Running and ready' || fail 'One or more pods are not Running and ready'
+  if check_ready_pods; then
+    pass 'All pods are Running and ready'
+  else
+    fail 'One or more pods are not Running and ready'
+    printf 'Unhealthy pod details and recovery commands (run kubectl commands inside lab-k8s-01; connect with bash scripts/10-create-lab-vm/login-lab-vm.sh):\n'
+    report_unready_pods false
+  fi
 fi
 check_kubevirt && pass "KubeVirt $expected_kubevirt_version is Deployed" || fail "KubeVirt $expected_kubevirt_version is not Deployed or version mismatches"
 check_cdi && pass "CDI $expected_cdi_version is Deployed" || fail "CDI $expected_cdi_version is not Deployed or version mismatches"

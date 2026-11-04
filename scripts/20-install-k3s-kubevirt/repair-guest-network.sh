@@ -163,6 +163,7 @@ bridges=$(qga_run 'ovs-vsctl --timeout=5 list-br') || {
 }
 nic_name=""
 bridge=""
+uplink_attached=false
 while IFS= read -r candidate_nic; do
   [[ -n "$candidate_nic" ]] || continue
   if [[ ! "$candidate_nic" =~ ^[[:alnum:]_.-]+$ ]]; then
@@ -181,12 +182,35 @@ while IFS= read -r candidate_nic; do
       fi
       nic_name="$candidate_nic"
       bridge="$candidate_bridge"
+      uplink_attached=true
     fi
   done <<< "$bridges"
 done <<< "$nic_candidates"
 if [[ -z "$nic_name" || -z "$bridge" ]]; then
-  printf 'Error: could not map libvirt MAC %s to a unique physical NIC and OVS bridge. No changes made.\n' "$mac_address" >&2
-  exit 1
+  mapfile -t nic_names < <(printf '%s\n' "$nic_candidates" | awk 'NF')
+  physical_nics=()
+  for candidate_nic in "${nic_names[@]}"; do
+    if ! grep -Fxq "$candidate_nic" <<< "$bridges"; then
+      physical_nics+=("$candidate_nic")
+    fi
+  done
+  bridge_mappings=$(qga_run 'ovs-vsctl --timeout=5 get Open_vSwitch . external_ids:ovn-bridge-mappings') || {
+    printf 'Error: could not read OVN bridge mappings; refusing to guess the OVS uplink.\n' >&2
+    exit 1
+  }
+  bridge_mappings=${bridge_mappings//\"/}
+  mapfile -t mapped_bridges < <(tr ',' '\n' <<< "$bridge_mappings" | awk -F: 'NF == 2 { print $2 }' | sort -u)
+  if (( ${#physical_nics[@]} != 1 || ${#mapped_bridges[@]} != 1 )); then
+    printf 'Error: MAC %s is not attached to OVS and its NIC/OVN bridge mapping is not unique. No changes made.\n' "$mac_address" >&2
+    exit 1
+  fi
+  nic_name="${physical_nics[0]}"
+  bridge="${mapped_bridges[0]}"
+  if [[ ! "$nic_name" =~ ^[[:alnum:]_.-]+$ || ! "$bridge" =~ ^[[:alnum:]_.-]+$ ]] ||
+    ! grep -Fxq "$bridge" <<< "$bridges"; then
+    printf 'Error: OVN maps the uplink to an invalid or missing OVS bridge (%s). No changes made.\n' "$bridge" >&2
+    exit 1
+  fi
 fi
 
 routes=$(qga_run 'ip -4 route show') || {
@@ -204,7 +228,17 @@ printf 'Guest uplink: %s enslaved to OVS bridge %s\n' "$nic_name" "$bridge"
 printf 'Guest IPv4 routes:\n%s\n' "${routes:-  (none)}"
 printf 'OVS bridge IPv4 addresses:\n%s\n' "${bridge_addresses:-  (none)}"
 
-if grep -Eq '^default([[:space:]]|$)' <<< "$routes"; then
+needs_repair=false
+if [[ "$uplink_attached" != true ]]; then
+  printf 'Diagnosis: uplink %s is missing from OVN-mapped OVS bridge %s.\n' "$nic_name" "$bridge"
+  needs_repair=true
+fi
+if ! grep -Eq '^default([[:space:]]|$)' <<< "$routes"; then
+  printf 'Diagnosis: the guest has no IPv4 default route.\n'
+  needs_repair=true
+fi
+
+if [[ "$needs_repair" != true ]]; then
   printf 'Diagnosis: a default route already exists; no route change is needed.\n'
   if [[ "$repair" == true ]]; then
     ssh_options=(
@@ -226,13 +260,24 @@ if grep -Eq '^default([[:space:]]|$)' <<< "$routes"; then
 fi
 
 if [[ "$repair" != true ]]; then
-  printf '\nDiagnosis: the guest has no IPv4 default route; SSH cannot reliably use its libvirt DHCP lease.\n'
   printf 'No changes made. Run: bash scripts/20-install-k3s-kubevirt/repair-guest-network.sh --repair\n'
   exit 0
 fi
 
-printf '\nRepairing the OVS bridge with the current DHCP lease and libvirt gateway...\n'
-qga_run "ip address replace '$guest_ip/$prefix' dev '$bridge' && ip route replace default via '$gateway' dev '$bridge'"
+printf '\nRepairing the OVS uplink and default route with the current DHCP lease and libvirt gateway...\n'
+qga_run "ip address replace '$guest_ip/$prefix' dev '$bridge'"
+if [[ "$uplink_attached" != true ]]; then
+  qga_run "ovs-vsctl --timeout=5 --may-exist add-port '$bridge' '$nic_name'"
+  qga_run "ip address del '$guest_ip/$prefix' dev '$nic_name' 2>/dev/null || true"
+  qga_run "ip route del default via '$gateway' dev '$nic_name' 2>/dev/null || true"
+fi
+qga_run "ip route replace default via '$gateway' dev '$bridge'"
+
+repaired_ports=$(qga_run "ovs-vsctl --timeout=5 list-ports '$bridge'")
+if ! grep -Fxq "$nic_name" <<< "$repaired_ports"; then
+  printf 'Error: uplink %s is still missing from OVS bridge %s.\n' "$nic_name" "$bridge" >&2
+  exit 1
+fi
 
 repaired_routes=$(qga_run 'ip -4 route show')
 if ! grep -Fq "default via $gateway dev $bridge" <<< "$repaired_routes"; then

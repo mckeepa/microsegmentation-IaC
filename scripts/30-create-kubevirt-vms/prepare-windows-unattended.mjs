@@ -20,14 +20,18 @@ if (!fs.existsSync(passwordPath)) {
 fs.chmodSync(passwordPath, 0o600);
 const password = fs.readFileSync(passwordPath, 'utf8').trim();
 if (password.length < 20 || /[\r\n]/.test(password)) throw new Error('Existing administrator password file is invalid. Restore it; do not regenerate installed credentials.');
-const bootstrap = "$ErrorActionPreference='Stop'; $seed=Get-PSDrive -PSProvider FileSystem | Where-Object {Test-Path (Join-Path $_.Root 'configure-windows.ps1')} | Select-Object -First 1 -ExpandProperty Root; if(-not $seed){throw 'Windows seed media missing'}; $destination='C:\\ProgramData\\microsegmentation-iac'; New-Item -ItemType Directory -Path $destination -Force | Out-Null; Copy-Item (Join-Path $seed 'configure-windows.ps1') (Join-Path $destination 'configure-windows.ps1') -Force; & (Join-Path $destination 'configure-windows.ps1')";
-const encoded = Buffer.from(bootstrap, 'utf16le').toString('base64');
 const escapeXml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 let answer = fs.readFileSync(path.join(directory, 'windows-unattend.xml'), 'utf8');
-for (const [name, value] of Object.entries({ACCEPT_EULA: config.acceptEvaluationTerms, IMAGE_INDEX: config.imageIndex, HOSTNAME: config.hostname, ADMIN_PASSWORD: password, BOOTSTRAP_COMMAND: encoded})) {
+for (const [name, value] of Object.entries({ACCEPT_EULA: config.acceptEvaluationTerms, IMAGE_INDEX: config.imageIndex, HOSTNAME: config.hostname, ADMIN_PASSWORD: password})) {
   answer = answer.replaceAll('__' + name + '__', escapeXml(value));
 }
 if (/__[A-Z_]+__/.test(answer)) throw new Error('Unresolved answer-file placeholder.');
+const commandMatches = [...answer.matchAll(/<Path>([^<]*)<\/Path>/g)];
+if (commandMatches.length !== 1) throw new Error(`Expected one RunSynchronous Path, found ${commandMatches.length}.`);
+const command = commandMatches[0][1];
+if (!command.includes('configure-windows.ps1') || command.length > 259) {
+  throw new Error(`RunSynchronous Path is invalid or ${command.length} characters; maximum is 259.`);
+}
 const secret = {
   apiVersion: 'v1', kind: 'Secret',
   metadata: {name: 'windows-unattended-seed', namespace: config.namespace, labels: {'microsegmentation-lab/managed-by': 'microsegmentation-iac'}},

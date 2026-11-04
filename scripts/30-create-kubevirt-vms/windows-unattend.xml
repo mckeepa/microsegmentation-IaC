@@ -26,7 +26,7 @@
       <ComputerName>__HOSTNAME__</ComputerName><TimeZone>UTC</TimeZone>
     </component>
     <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <RunSynchronous><RunSynchronousCommand wcm:action="add"><Order>1</Order><Description>Configure lab drivers and administration</Description><Path>powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand __BOOTSTRAP_COMMAND__</Path></RunSynchronousCommand></RunSynchronous>
+      <RunSynchronous><RunSynchronousCommand wcm:action="add"><Order>1</Order><Description>Configure lab drivers and administration</Description><Path>powershell.exe -NoProfile -ExecutionPolicy Bypass -File configure-windows.ps1</Path></RunSynchronousCommand></RunSynchronous>
     </component>
   </settings>
   <settings pass="oobeSystem">

@@ -176,7 +176,7 @@ The setup helper generates the password into Git-ignored `work/windows-administr
 
 ### Unattended Installation
 
-**Paused / known blocker (2026-10-21): do not rerun installation yet.** Windows Setup rejected the generated `RunSynchronousCommand/Path`: the encoded command is 1,458 characters, exceeding Microsoft's 259-character limit. The current Windows system disk is preserved at a setup error. The generator is not yet repaired; use the [pause handoff and recovery order](../../doco/IMPLEMENTATION-STATUS.md#paused-handoff---2026-10-21) before changing answer media, restarting, or attempting recovery. The commands below describe the intended workflow, not a successfully verified Windows installation.
+**Paused / repair validated (2026-10-21): do not rerun installation into the existing failed disk yet.** Windows Setup rejected the previous generated `RunSynchronousCommand/Path` because it was 1,458 characters, exceeding Microsoft's 259-character limit. The generator now uses a short file-based launcher and fails if the rendered path exceeds 259 characters; the regenerated XML and Secret pass validation. The failed system disk is preserved, and a checksummed recovery copy exists. Next, retry only into a new or explicitly approved clean disk; do not attempt in-place resume. See the [pause handoff](../../doco/IMPLEMENTATION-STATUS.md#paused-handoff---2026-10-21).
 
 The current workflow targets the approved Standard Evaluation Desktop Experience image (index 2, confirmed as `ServerStandardEval` in the staged ISO). Accept Microsoft's terms only after reviewing them; `acceptEvaluationTerms` is an explicit prerequisite in JSON, not a license bypass.
 

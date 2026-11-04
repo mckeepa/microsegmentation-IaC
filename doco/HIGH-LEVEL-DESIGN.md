@@ -1,6 +1,6 @@
 # High-Level Design
 
-This document describes the target design, not a setup sequence. Local infrastructure is implemented; policy adapters, Argo CD, and Azure/NSX deployment remain planned. Use the [checkpoint](IMPLEMENTATION-STATUS.md) and [task guides](../scripts/README.md) for current commands.
+This document describes the target design, not a setup sequence. Local infrastructure is implemented; policy adapters, Argo CD, and Azure/NSX deployment remain planned. Use the [checkpoint](IMPLEMENTATION-STATUS.md) and [task guides](../scripts/README.md) for current commands. The long-lived policy plane is now outlined in [microsegmentation-iac](../microsegmentation-iac/README.md).
 
 ## Deployment Shape
 

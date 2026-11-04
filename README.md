@@ -10,6 +10,10 @@ The single-node K3s/OVN-Kubernetes/KubeVirt/CDI lab is deployed. Rocky Linux 10 
 
 For the current implementation checkpoint, see [Implementation status](doco/IMPLEMENTATION-STATUS.md).
 
+## Before Running Scripts
+
+Do not clean or reset the lab before routine runs. The task scripts are designed to inspect and resume project-owned resources; use the progress checker and follow its `NEXT:` recommendation. A full reset is a separate destructive action: [`cleanup-lab.sh`](scripts/90-cleanup/README.md) permanently deletes the outer VM disk, cluster, and all nested guest disks. Use it only when intentionally rebuilding from task 10, after backing up anything you need.
+
 ## Resume After an Interruption
 
 After a power loss or break, run these from the repository root on the QEMU/KVM host:
@@ -27,6 +31,25 @@ After a power loss or break, run these from the repository root on the QEMU/KVM 
 4. Update the checkpoint file when a task completes or a new blocker is found.
 
 The task scripts preserve partial state and resume project-owned resources. Do not delete the `netpol-test` namespace or run cleanup to "start fresh" unless the checker or checkpoint says to.
+
+## Restart Test VMs and Verify Microsegmentation
+
+From the repository root on the physical QEMU/KVM host, resume the outer VM and check the lab state:
+
+```sh
+bash scripts/check-lab-progress.sh
+bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
+```
+
+The progress checker prompts before starting the outer VM if it is powered off. Once the cluster is healthy, start the installed test guests as needed:
+
+```sh
+export KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml"
+work/virtctl-v1.9.1 start netpol-server-rocky -n netpol-test
+work/virtctl-v1.9.1 start netpol-client -n netpol-test
+```
+
+Keep `netpol-server-windows` powered off during the Rocky test; test Windows separately by starting it instead of Rocky. The guest start commands only start existing VMs and preserve their disks. Follow the [task 35 isolation test procedure](scripts/35-verify-kubernetes-isolation/README.md) to apply policies and verify allowed and denied connections. It is currently a manual test procedure, not an automated runner. **Do not run** `run-isolation-test.sh` for the installed task 30 guests: that legacy script creates its own namespace and VMs. See the [task 30 guide](scripts/30-create-kubevirt-vms/README.md) for guest setup and stop/start details.
 
 ## Documentation
 
