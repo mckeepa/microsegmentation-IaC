@@ -9,7 +9,7 @@
     "cachePrefix": "rocky-cloud",
     "extension": "qcow2"
   },
-  "packages": ["qemu-guest-agent", "curl", "ca-certificates"],
+  "packages": ["qemu-guest-agent", "curl", "ca-certificates", "cockpit"],
   "sudoGroup": "wheel",
   "sshService": "sshd",
   "agentService": "qemu-guest-agent"

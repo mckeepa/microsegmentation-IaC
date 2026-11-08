@@ -14,6 +14,15 @@ RDP and dashboard tunnels need a dedicated terminal left running. Start their cl
 
 Use the first-build path only for a new lab. Existing installations should enter through the checkpoint and inventory, not repeat the creator.
 
+For the common case — the laptop or outer VM was stopped and restarted — use the one-command resumer:
+
+```sh
+bash scripts/resume-lab.sh                                   # safe default: checks, repair, inventory
+bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop   # also start the outer VM, fleet guests, and desktop
+```
+
+It wraps the steps below: outer VM start (with approval), SSH wait, the task 20 health check with the guarded OVN route repair, pod-recovery wait, the VM/access inventory, optional guest starts, and the dashboard-tunnel reminders.
+
 ```mermaid
 flowchart TD
    start[Start on the physical host<br/>Repository-root terminal]

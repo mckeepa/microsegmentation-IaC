@@ -16,7 +16,14 @@ Do not clean or reset the lab before routine runs. The task scripts are designed
 
 ## Resume After an Interruption
 
-After a power loss or break, run these from the repository root on the QEMU/KVM host:
+After a power loss, laptop restart, or break, run the one-command resumer from the repository root on the QEMU/KVM host:
+
+```sh
+bash scripts/resume-lab.sh                                   # checks only; prompts before starting the outer VM
+bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop   # full restart of VM, fleet guests, and desktop
+```
+
+It starts the outer VM (with approval), waits for SSH, runs the cluster health check with the guarded OVN route repair, waits out any pod crash-loop recovery, prints the VM inventory with access methods, optionally reconciles fleet VMs and starts the desktop, and ends with the dashboard-tunnel and access commands. For deeper diagnosis:
 
 1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](doco/IMPLEMENTATION-STATUS.md) for completed tasks, known blockers, and the resume order.
 2. Run the progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
@@ -51,9 +58,25 @@ work/virtctl-v1.9.1 start netpol-client -n netpol-test
 
 Keep `netpol-server-windows` powered off during the Rocky test; test Windows separately by starting it instead of Rocky. The guest start commands only start existing VMs and preserve their disks. Follow the [task 35 isolation test procedure](scripts/35-verify-kubernetes-isolation/README.md) to apply policies and verify allowed and denied connections. It is currently a manual test procedure, not an automated runner. **Do not run** `run-isolation-test.sh` for the installed task 30 guests: that legacy script creates its own namespace and VMs. See the [task 30 guide](scripts/30-create-kubevirt-vms/README.md) for guest setup and stop/start details.
 
+## Dashboard Quick Access
+
+With the two tunnel helpers running (`bash scripts/45-monitoring-dashboard/access-dashboards.sh --host` and `bash lab-switchboard/scripts/access.sh`), open:
+
+| Dashboard | URL | Login |
+| --- | --- | --- |
+| Lab Switchboard (VM control portal) | <http://localhost:18088> | password in `lab-switchboard/.local/admin-password` |
+| Headlamp (Kubernetes) | <http://localhost:18080> | short-lived token in `work/headlamp-token`; regenerate with `bash scripts/45-monitoring-dashboard/dashboard-permissions.sh token` |
+| Cockpit (outer `lab-k8s-01` VM OS) | <https://localhost:19090> | `cockpit-monitor` + password in `work/cockpit-monitor-password` |
+| Cockpit on a fleet VM (per-VM OS view) | printed by `bash scripts/34-vm-fleet/setup-vm-fleet.sh --cockpit <name>` | `labadmin` + password set with `--set-password <name>` |
+
+Tunnels are terminal/background processes, not boot services: reopen them after a reboot. Credential files are Git-ignored and never printed; read them privately. Details and troubleshooting: [monitoring inventory](doco/MONITORING.md), [dashboard runbook](scripts/45-monitoring-dashboard/README.md), and the [Switchboard guide](lab-switchboard/README.md).
+
 ## Documentation
 
 - [Lab Switchboard: containerized VM control and dashboard portal](lab-switchboard/README.md)
+- [Monitoring tools and dashboards: inventory and where each is accessed](doco/MONITORING.md)
+- [Install and open the monitoring dashboards (Cockpit and Headlamp)](scripts/45-monitoring-dashboard/README.md)
+- [VM access: list running VMs/protocols, SSH, and RDP](scripts/README.md#vm-access-ssh-and-rdp)
 - [Start or resume the lab: task guides](scripts/README.md)
 - [Documentation index](doco/README.md)
 - [Implementation status and resume checkpoint](doco/IMPLEMENTATION-STATUS.md)

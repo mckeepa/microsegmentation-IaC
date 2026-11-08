@@ -9,7 +9,7 @@
     "cachePrefix": "ubuntu-cloud",
     "extension": "img"
   },
-  "packages": ["qemu-guest-agent", "openssh-server", "curl", "ca-certificates"],
+  "packages": ["qemu-guest-agent", "openssh-server", "curl", "ca-certificates", "cockpit"],
   "sudoGroup": "sudo",
   "sshService": "ssh",
   "agentService": "qemu-guest-agent"

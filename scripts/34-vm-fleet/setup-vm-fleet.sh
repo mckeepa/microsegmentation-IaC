@@ -21,14 +21,14 @@ mode=--plan
 target=""
 
 usage() {
-  printf 'Usage: %s [--config file.json] [--plan|--apply|--verify|--status] [--ssh <name>] [--start <name>] [--stop <name>] [--set-password <name>]\n' "${0##*/}"
+  printf 'Usage: %s [--config file.json] [--plan|--apply|--verify|--status] [--ssh <name>] [--start <name>] [--stop <name>] [--set-password <name>] [--cockpit <name>]\n' "${0##*/}"
 }
 
 while (( $# > 0 )); do
   case "$1" in
     --config) (( $# >= 2 )) || { usage >&2; exit 2; }; config="$2"; shift 2 ;;
     --plan|--apply|--verify|--status) mode="$1"; shift ;;
-    --ssh|--start|--stop|--set-password)
+    --ssh|--start|--stop|--set-password|--cockpit)
       (( $# >= 2 )) || { usage >&2; exit 2; }
       mode="$1"; target="$2"; shift 2 ;;
     *) usage >&2; exit 2 ;;
@@ -164,7 +164,7 @@ if [[ "$mode" == --status ]]; then
   exit 0
 fi
 
-if [[ "$mode" == --ssh || "$mode" == --start || "$mode" == --stop || "$mode" == --set-password ]]; then
+if [[ "$mode" == --ssh || "$mode" == --start || "$mode" == --stop || "$mode" == --set-password || "$mode" == --cockpit ]]; then
   vm_json=$(vm_config "$target")
   namespace=$(vm_namespace "$vm_json")
   live_vm=$(msl_remote_kubectl get vm "$target" -n "$namespace" --ignore-not-found -o json)
@@ -180,7 +180,18 @@ if [[ "$mode" == --ssh || "$mode" == --start || "$mode" == --stop || "$mode" == 
       [[ -t 0 ]] || { printf 'Error: enter the password directly in an interactive terminal.\n' >&2; exit 1; }
       msl_guest_ssh "$admin_user" "$target" "$namespace" "$(guest_key "$target")" "$(guest_known_hosts "$target")" \
         --local-ssh-opts=-tt --command="sudo -n passwd $admin_user"
-      printf 'Password updated for %s on %s. It is only for virtctl console/VNC login; SSH remains key-only.\n' "$admin_user" "$target"
+      printf 'Password updated for %s on %s. It is used for virtctl console/VNC and Cockpit login; SSH remains key-only.\n' "$admin_user" "$target"
+      exit ;;
+    --cockpit)
+      # Loopback-to-loopback tunnel, like the desktop RDP helper: Cockpit in
+      # the guest listens only on 127.0.0.1:9090 and is reached inside SSH.
+      msl_find_free_port 19091 19101
+      printf 'Cockpit for %s: open https://127.0.0.1:%s and log in as %s.\n' "$target" "$MSL_FREE_PORT" "$admin_user"
+      printf 'Cockpit needs an OS password: set one first with %s --set-password %s if you have not.\n' "${0##*/}" "$target"
+      printf 'Keep this terminal open; Ctrl+C closes the tunnel without stopping the VM.\n'
+      msl_guest_ssh "$admin_user" "$target" "$namespace" "$(guest_key "$target")" "$(guest_known_hosts "$target")" \
+        --local-ssh-opts=-N --local-ssh-opts="-L127.0.0.1:$MSL_FREE_PORT:127.0.0.1:9090" \
+        --local-ssh-opts='-o ExitOnForwardFailure=yes'
       exit ;;
   esac
 fi
@@ -284,8 +295,10 @@ for name in "${fleet_names[@]}"; do
        users:[{name:$admin,groups:[$bp.sudoGroup],shell:"/bin/bash",lock_passwd:true,sudo:["ALL=(ALL) NOPASSWD:ALL"],ssh_authorized_keys:[$key]}],
        package_update:true,packages:$bp.packages,
        write_files:[{path:"/etc/ssh/sshd_config.d/00-microsegmentation-lab.conf",owner:"root:root",permissions:"0644",
-         content:"PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n"}],
-       runcmd:[["systemctl","enable","--now",$bp.agentService],["sshd","-t"],["systemctl","reload",$bp.sshService]]}
+         content:"PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n"},
+        {path:"/etc/systemd/system/cockpit.socket.d/listen.conf",owner:"root:root",permissions:"0644",
+         content:"[Socket]\nListenStream=\nListenStream=127.0.0.1:9090\nFreeBind=yes\n"}],
+       runcmd:[["systemctl","enable","--now",$bp.agentService],["systemctl","daemon-reload"],["systemctl","enable","--now","cockpit.socket"],["sshd","-t"],["systemctl","reload",$bp.sshService]]}
     ')
     printf -v user_data '#cloud-config\n%s\n' "$user_data"
     existing_secret=$(msl_remote_kubectl get secret "$secret_name" -n "$namespace" --ignore-not-found -o json)
