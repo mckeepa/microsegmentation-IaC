@@ -23,7 +23,7 @@ bash scripts/resume-lab.sh                                   # checks only; prom
 bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop   # full restart of VM, fleet guests, and desktop
 ```
 
-It starts the outer VM (with approval), waits for SSH, runs the cluster health check with the guarded OVN route repair, waits out any pod crash-loop recovery, prints the VM inventory with access methods, optionally reconciles fleet VMs and starts the desktop, and ends with the dashboard-tunnel and access commands. For deeper diagnosis:
+It starts the outer VM (with approval), waits for SSH, runs the cluster health check with the guarded OVN route repair, waits out any pod crash-loop recovery, prints the VM inventory with access methods, optionally reconciles fleet VMs and starts the desktop, and ends with the dashboard-tunnel and access commands. Afterward, reopen the dashboard tunnels and generate a fresh Headlamp token per [Dashboard Quick Access](#dashboard-quick-access) — tunnels and tokens never survive a restart. The microsegmentation next steps are in the [implementation status checkpoint](doco/IMPLEMENTATION-STATUS.md). For deeper diagnosis:
 
 1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](doco/IMPLEMENTATION-STATUS.md) for completed tasks, known blockers, and the resume order.
 2. Run the progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
