@@ -8,7 +8,7 @@ All ISO files and temporary download data are stored in the ignored repository-r
 
 Ubuntu Server 24.04.5 is the initial client OS and is downloaded as the outer lab guest's bootstrap image too.
 
-The ISO below is used by task 10 and the original task 30 boot-check path. The current unattended Ubuntu client uses a separate checksum-pinned cloud image downloaded by `setup-ubuntu-client.sh`; do not manually install that client from the ISO. The optional Rocky desktop also downloads its own cloud image in task 32.
+The ISO below is used by task 10 and the original task 30 boot-check path. The current unattended Ubuntu client uses a separate checksum-pinned cloud image downloaded by `setup-ubuntu-client.sh`; do not manually install that client from the ISO. The Rocky desktop also downloads its own cloud image in task 32.
 
 1. From the project root, run:
 

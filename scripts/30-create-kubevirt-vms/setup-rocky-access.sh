@@ -33,6 +33,8 @@ for command_name in ssh ssh-keygen jq base64 git awk virsh; do
     exit 1
   }
 done
+source "$repo_root/scripts/lib/common.sh"
+msl_init "$repo_root"
 if [[ ! -x "$virtctl_path" || ! -s "$KUBECONFIG" ]]; then
   printf 'Error: task 20 kubeconfig and verified task 30 virtctl are required.\n' >&2
   exit 1
@@ -77,30 +79,10 @@ if [[ "$mode" == --prepare ]]; then
   exit 0
 fi
 
-if [[ "$(virsh -c qemu:///system desc lab-k8s-01 --title)" != microsegmentation-iac-lab-k8s-01 ||
-      "$(virsh -c qemu:///system domstate lab-k8s-01)" != running ]]; then
-  printf 'Error: the project-managed outer VM must be running.\n' >&2
-  exit 1
-fi
-outer_ip=$(virsh -c qemu:///system domifaddr lab-k8s-01 --source lease |
-  awk '$3 == "ipv4" { split($4, address, "/"); print address[1]; exit }')
-if [[ -z "$outer_ip" ]]; then
-  outer_mac=$(virsh -c qemu:///system domiflist lab-k8s-01 |
-    awk '$3 == "default" { print tolower($5); exit }')
-  interface_json=$(virsh -c qemu:///system qemu-agent-command lab-k8s-01 \
-    '{"execute":"guest-network-get-interfaces"}')
-  outer_ip=$(jq -r --arg mac "$outer_mac" \
-    '[.return[] | select((."hardware-address" // "" | ascii_downcase) == $mac) | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4" and (.["ip-address"] | startswith("169.254.") | not)) | .["ip-address"]] | first // empty' \
-    <<< "$interface_json")
-fi
-if [[ -z "$outer_ip" ]]; then
-  printf 'Error: outer guest address unavailable.\n' >&2
-  exit 1
-fi
-ownership_json=$(ssh -i "$work_dir/lab-k8s-01_ed25519" \
-  -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 \
-  -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$work_dir/lab-k8s-01_known_hosts" \
-  "labadmin@$outer_ip" \
+msl_assert_outer_vm
+msl_discover_outer_ip
+outer_ip="$MSL_OUTER_IP"
+ownership_json=$(msl_outer_ssh \
   'sudo -n k3s kubectl get namespace netpol-test -o json && sudo -n k3s kubectl get vm netpol-server-rocky -n netpol-test -o json')
 if ! jq -s -e '
   length == 2 and all(.[]; .metadata.labels["microsegmentation-lab/managed-by"] == "microsegmentation-iac") and
@@ -123,15 +105,20 @@ if [[ "$mode" == --bootstrap-user ]]; then
   printf -v bootstrap_command 'sudo bash -o pipefail -c %q' "$guest_command"
   "$virtctl_path" ssh "$bootstrap_user@vmi/netpol-server-rocky" -n netpol-test \
     --identity-file="$key_path" --known-hosts="$known_hosts" \
-    --local-ssh-opts=-tt --local-ssh-opts='-o StrictHostKeyChecking=accept-new' \
+    --local-ssh-opts=-tt --local-ssh-opts="-o UserKnownHostsFile=$known_hosts" \
+    --local-ssh-opts='-o StrictHostKeyChecking=accept-new' \
     --command="$bootstrap_command"
   mode=--harden
 fi
 
 rocky_ssh() {
+  # Keep a longer ConnectTimeout for the just-bootstrapped guest; pin the
+  # project known-hosts file because virtctl's --known-hosts flag is ignored
+  # by its local-ssh wrapper.
   "$virtctl_path" ssh labadmin@vmi/netpol-server-rocky -n netpol-test \
     --identity-file="$key_path" --known-hosts="$known_hosts" \
     --local-ssh-opts='-o BatchMode=yes' --local-ssh-opts='-o IdentitiesOnly=yes' \
+    --local-ssh-opts="-o UserKnownHostsFile=$known_hosts" \
     --local-ssh-opts='-o ConnectTimeout=10' \
     --local-ssh-opts='-o StrictHostKeyChecking=accept-new' --command="$1"
 }

@@ -16,7 +16,7 @@ To remove the project-managed `lab-k8s-01` VM and its disk, run the script inter
 bash scripts/90-cleanup/cleanup-lab.sh --execute
 ```
 
-This permanently deletes the outer VM disk and everything inside it: the cluster, all nested VM disks (including the optional desktop), and installed dashboards. It removes the outer VM's generated SSH key, known-hosts file, seed ISO, and exported kubeconfig. The script verifies the libvirt ownership marker and disk path, requests a graceful shutdown, and refuses to force-stop the VM if shutdown times out. Downloaded Ubuntu, Rocky, and Windows ISOs are retained. Other generated guest keys, dashboard credential files, and image caches may remain under ignored `work/`; review them separately rather than assuming full credential erasure. Unrelated host VMs, networks, and storage volumes are not deleted.
+This permanently deletes the outer VM disk and everything inside it: the cluster, all nested VM disks (including the Rocky desktop), and installed dashboards. It removes the outer VM's generated SSH key, known-hosts file, seed ISO, and exported kubeconfig. The script verifies the libvirt ownership marker and disk path, requests a graceful shutdown, and refuses to force-stop the VM if shutdown times out. Downloaded Ubuntu, Rocky, and Windows ISOs are retained. Other generated guest keys, dashboard credential files, and image caches may remain under ignored `work/`; review them separately rather than assuming full credential erasure. Unrelated host VMs, networks, and storage volumes are not deleted.
 
 After cleanup, rerun task 10 to recreate the outer VM, then task 20 to bootstrap the cluster. Task 20 also invokes task 10 automatically when the managed VM is absent.
 

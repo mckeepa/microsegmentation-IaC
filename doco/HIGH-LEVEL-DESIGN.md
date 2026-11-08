@@ -24,7 +24,7 @@ flowchart TB
 					rocky[netpol-server-rocky<br/>Rocky 10 - installed]
 					windows[netpol-server-windows<br/>Windows - installation pending]
 				end
-				subgraph desktopns[rocky-desktop namespace - optional]
+				subgraph desktopns[rocky-desktop namespace]
 					desktop[Rocky 9 - XFCE and Firefox<br/>SSH, VNC and tunneled RDP]
 				end
 				subgraph dashboardns[lab-dashboard namespace - optional]

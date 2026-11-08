@@ -1,5 +1,90 @@
 # Implementation Status
 
+## Session Handoff - 2026-11-08
+
+This is the latest checkpoint and supersedes the 2026-11-05 handoff below. The lab now has **four KubeVirt VMs Running and Ready**: `rocky-desktop`, the Ubuntu client `netpol-client`, and the new fleet VMs `web-ubuntu-01` (namespace `seg-web`) and `db-rocky-01` (namespace `seg-db`).
+
+### State at Handoff
+
+| Component | Latest evidence |
+| --- | --- |
+| Outer `lab-k8s-01` | Running at `192.168.122.123`; disk live-resized 100 → 130 GiB (about 100 GiB free on the guest root afterward) |
+| K3s / OVN / KubeVirt / CDI | Healthy after route repair; all infrastructure pods Running/ready (see recovery note below) |
+| `rocky-desktop` | Running and Ready; `--verify` passed (Rocky 9.8, XFCE, Firefox, xrdp, SELinux enforcing, loopback-only RDP); the user set the `desktop` password privately and confirmed a working tunneled RDP session with `xfreerdp3 ... /d:` |
+| `netpol-test` namespace | Created by the first-build creator; all three installer ISOs uploaded; `netpol-server-rocky`, `netpol-client`, and `netpol-server-windows` VM templates created and boot-checked (each VMI reached Running, then stopped) |
+| `netpol-client` (Ubuntu) | Unattended cloud-image apply and an independent re-verify both printed `PASS Ubuntu unattended setup and key-based administration`; Ubuntu 24.04.5, key-only SSH, passwordless lab sudo, guest agent connected; VMI Running and Ready |
+| `netpol-server-rocky` / `netpol-server-windows` | Installer templates only on this rebuilt lab; **no OS is installed** on their fresh disks (the previous installed disks were deleted in the 2026-11-05 full reset); both stopped with installer-first boot |
+| VM fleet (task 34) | `bash scripts/34-vm-fleet/setup-vm-fleet.sh --apply` provisioned and verified `web-ubuntu-01` (Ubuntu 24.04, `seg-web`) and `db-rocky-01` (Rocky 9, `seg-db`) unattended end to end; both printed their `PASS fleet VM ...` lines on apply and again on an independent `--verify` |
+| Isolation tests | Not run on the rebuilt environment |
+
+### Fixed This Session
+
+- **Desktop host-key blocker resolved safely.** The guest ED25519 fingerprint (`SHA256:MmFdXXrtpijwk4k48bVSDoojlzH6DaIMD+fVvho6xrk`) was independently verified by `ssh-keyscan` from inside `lab-k8s-01` to the launcher pod IP before removing only the stale `vmi.rocky-desktop.rocky-desktop` entries from the laptop's global `~/.ssh/known_hosts` (backup retained). Host-key checking stayed enabled. The same verified procedure later removed stale `vmi.netpol-client.netpol-test` entries left by the pre-reset lab.
+- **Root cause of silent SSH waits fixed.** `virtctl ssh --known-hosts` is ignored by its local-ssh wrapper, so connections consulted the global known-hosts file. Both `setup-rocky-desktop.sh` and `setup-ubuntu-client.sh` now pass `-o UserKnownHostsFile` so the project's pinned `work/*_known_hosts` files are authoritative.
+- **Wait-loop visibility added.** Both scripts now print a heartbeat every 30 seconds (elapsed time, VMI phase, and the most recent SSH error) plus stage markers, so a host-key or boot failure is visible within seconds instead of a silent multi-minute wait.
+- **OVN route loss recurred and was repaired.** After the outer VM's overnight reboot, the default route was missing again; CDI and KubeVirt operator/controller pods crash-looped for about ten hours with `dial tcp 10.96.0.1:443 ... network is unreachable`. The guarded runtime repair restored the route and every pod recovered without manual deletion. This remains a per-boot runtime repair, not a persistent fix.
+- **Docs updated.** The Rocky desktop is now documented as a standard lab component (no longer "optional") across the README, design, setup, operations, and task docs; task 32 gained a start → verify → set-password → tunnel → connect quick start, an `/d:`-based FreeRDP command, and an "RDP from Another Machine" SSH-chaining section.
+- **Shared library extracted.** Duplicated plumbing (outer-VM guards, IP discovery, remote kubectl, guest SSH with pinned known-hosts, heartbeat SSH waits, image fetching, CDI upload tunnels) now lives in `scripts/lib/common.sh`. Refactored onto it: `setup-rocky-desktop.sh` and `setup-ubuntu-client.sh` (both re-verified with their `PASS` lines), `create-test-vms.sh` and `boot-installed-disk.sh` (re-tested with `--dry-run`), `setup-windows-server.sh` (`--plan` re-tested), and `setup-rocky-access.sh` (syntax-checked only; its `--verify` needs an installed Rocky 10 guest, which does not exist on this rebuilt lab). The Windows and Rocky-access `virtctl ssh` helpers also received the known-hosts pinning fix.
+- **VM fleet implemented (new task 34).** A single `scripts/34-vm-fleet/fleet.json` declares scalable test VMs from approved blueprints (`ubuntu-server`, `rocky-server` cloud images) with name/hostname, CPU, memory, disk, microsegmentation labels, forwarded ports, runState, owner, and purpose. Namespaces derive from the `app` label (`seg-<app>`). The manager (`setup-vm-fleet.sh --plan/--apply/--verify/--status/--ssh/--start/--stop`) is create-and-reconcile only and never deletes resources. Windows/Rocky 10 remain outside the fleet until a verified unattended path exists.
+
+### Resume Next Session
+
+1. Run `bash scripts/check-lab-progress.sh` and the task 20 cluster checker; re-run the guarded route repair if SSH to the outer VM fails after a reboot.
+2. The agreed precondition for starting microsegmentation implementation — at least two VMs running under KubeVirt — is exceeded: `rocky-desktop`, `netpol-client`, `web-ubuntu-01`, and `db-rocky-01` are all Running and Ready. Keep what you need running; stop idle guests for capacity.
+3. Scale additional test servers by adding entries to `scripts/34-vm-fleet/fleet.json` and re-running `--apply`; see the [task 34 guide](../scripts/34-vm-fleet/README.md).
+4. For the three-guest isolation matrix, Rocky 10 and Windows still need OS installation on this rebuilt lab (manual ISO path for Rocky; the repaired unattended generator for Windows remains unverified end to end).
+5. Task 35 isolation testing still requires the Rocky test service configuration and baseline connectivity checks before any policy is applied.
+
+## End-of-Day Handoff - 2026-11-05
+
+Work is paused at the user's request. This is the latest checkpoint and supersedes the older resume instructions below. No shutdown, restart, password reset, or host-key repair was performed while recording this handoff.
+
+### State at Handoff
+
+| Component | Latest evidence |
+| --- | --- |
+| Outer `lab-k8s-01` | Running and reachable over key-based SSH at `192.168.122.123`; fresh Ubuntu 24.04.5, 8 vCPUs, 24 GiB RAM, 100 GiB disk |
+| K3s / OVN / KubeVirt / CDI | Task 20 bootstrap and full pinned cluster health check passed earlier today; not rerun at handoff |
+| Optional `rocky-desktop` | Recreated after reset; currently Stopped, VMI `Succeeded`, launcher pod `Completed`; a user screenshot showed the graphical login screen earlier |
+| Desktop login | Not verified; password-setting helper failed with a changed SSH host key before it could set a password |
+| Task 30 test guests | No Ubuntu client, Rocky test server, or Windows VM currently present; `netpol-test` namespace absent |
+| Dashboards / Switchboard | `lab-dashboard` and `lab-switchboard` namespaces absent after reset; prior deployment and credential instructions are historical |
+| Isolation tests | Not run on the rebuilt environment |
+
+### Desktop Access Blocker
+
+- `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --set-desktop-password` exited with a changed-host-key error for `vmi.rocky-desktop.rocky-desktop`. The terminal identified a stale ECDSA entry in the laptop's `~/.ssh/known_hosts` at line 319 and reported ED25519 fingerprint `SHA256:MmFdXXrtpijwk4k48bVSDoojlzH6DaIMD+fVvho6xrk`. This new desktop fingerprint has **not** been independently verified; do not remove the entry or disable host-key checking blindly.
+- The helper specifies a project known-hosts file, but the error names the global SSH file. Inspect the effective `virtctl`/local SSH options and known-hosts lookup before repairing the stale identity.
+- Desktop VM administrator `labadmin` is key-only with a locked password and passwordless lab sudo. There is no default graphical password. The intended graphical user is `desktop`; select it instead of `labadmin` in the login dropdown and set its password directly in the terminal after SSH is repaired.
+- The selected `.local/admin-password` reference in [Switchboard's historical checkpoint](../lab-switchboard/STATUS.md) is a portal-only credential relative to `lab-switchboard/`, not a VM password. Do not read, print, or reuse it for desktop login. Any retained host credential file does not prove its old service still exists.
+
+### Resume Next Session
+
+1. Run `bash scripts/check-lab-progress.sh`, then `bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh`. Rediscover the outer VM address after a host restart; do not assume the address above is permanent. A completed stopped desktop VMI is not a running desktop session.
+2. When ready to work on the desktop, start only that VM: `KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml" work/virtctl-v1.9.1 start rocky-desktop -n rocky-desktop`. Wait for the VMI to be Running and ready. Do not recreate or reupload its disk to fix access.
+3. Independently verify the desktop host key through a trusted console or guest-agent path, then repair only the confirmed stale known-hosts entry and check the helper's effective SSH options. Retry `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --ssh` for the administrator shell.
+4. Run `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --set-desktop-password` in the user's own terminal. Enter the new password there, never in chat. After a successful password update, run the `--vnc` helper and log in as `desktop`, or use the documented `--rdp` tunnel. Graphical login remains unverified until that succeeds.
+5. Continue [task 25](../scripts/25-prepare-guest-images/README.md) media verification and [task 30](../scripts/30-create-kubevirt-vms/README.md) test-guest provisioning separately. Reinstall optional dashboards only as an explicit follow-up, not as recovery of an existing deployment.
+
+After a laptop shutdown, assume GUI viewers and SSH/RDP tunnels have closed. Recheck VM states before reconnecting. Preserve the recreated desktop disk and generated host files; no further cleanup is needed to resume.
+
+## Full Reset and Clean-Build Test - 2026-11-05
+
+The user explicitly approved deleting and recreating the outer VM, including its disk and all nested guest data. This supersedes the earlier preservation and resume instructions below; those sections are historical evidence, not current inventory.
+
+- Task 90 dry run verified the project ownership marker and selected only `lab-k8s-01` and `/var/lib/libvirt/images/lab-k8s-01.qcow2`. The guarded interactive cleanup completed after graceful shutdown, undefining the VM and deleting its disk and generated outer-VM connection files.
+- All cluster resources, nested guest disks, the Windows recovery copy inside the outer disk, and installed dashboards were removed. Downloaded host media and other ignored host-side files were retained; this was not credential erasure.
+- Host preflight passed after cleanup: 16 logical CPUs, 48 GiB available memory, 453 GiB free on the root filesystem, accessible KVM, and enabled nested virtualization.
+- The first `bash scripts/20-install-k3s-kubevirt/setup-k3s-kubevirt.sh` run created a fresh 100 GiB disk and outer VM with 8 vCPUs and 24 GiB RAM, plus a new SSH key and autoinstall seed, but exited after SSH did not become ready within 20 minutes. That initial unattended run did not pass end to end.
+- After the user reported the new base VM ready, the guarded task 10 helper started the existing stopped VM without replacing its disk. Ubuntu 24.04.5, key-based SSH, passwordless sudo, and root access to nested KVM were verified at `192.168.122.123`.
+- The installed OS presented a changed SSH host key. Its ED25519 fingerprint was independently verified through the local QEMU guest agent before removing only the stale address entry from the project-specific known-hosts file. Host-key checking remained enabled.
+- Task 20 was rerun on this base VM and printed `Lab cluster setup completed.` K3s `v1.36.5+k3s1`, OVN-Kubernetes `v1.4.0`, Helm `v3.22.1`, KubeVirt `v1.9.1`, and CDI `v1.66.1` were installed. The host kubeconfig was exported to ignored `work/kubeconfig-lab-k8s-01.yaml` with the current API endpoint.
+- **Task 20 verification passed:** `bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh` exited successfully, checking pinned versions, custom-CNI settings, API TLS SAN, OVN CNI plugins/CIDRs/Helm settings, node readiness, and readiness of every pod. Three KubeVirt pods had one startup restart each but were all ready at verification.
+
+At task 20 completion, no nested guests or optional dashboards had been recreated. The optional desktop was subsequently recreated; see the latest end-of-day handoff above. Tasks 25 and 30 remain the next test-workload stages.
+
+This tests a fresh outer VM on an already prepared physical host with cached Ubuntu installation media. It does not certify a bare host without prerequisites, nor recreate or verify the task 25-35 workloads or optional dashboards.
+
 ## Paused Handoff - 2026-10-21
 
 Work is paused at the user's request. No repair, reinstall, disk replacement, or VM restart was performed after diagnosis. The host-side `setup-windows-server.sh --apply` waiter was deliberately terminated with SIGTERM (exit `143`) so it cannot continue automatically while the work is paused. Existing dashboard/Switchboard services were left alone.
@@ -163,7 +248,7 @@ Live admin/read-only authorization tests passed and access was restored to read-
 4. Follow task 35's manual policy matrix and record observed packet results, component versions, guest versions, labels, addresses, and test revision. No policy test result is currently recorded.
 5. Keep Windows stopped until its installed OS, credentials, drivers, and test service are independently verified. Do not use the legacy installer/test runner or task 90 cleanup for routine recovery.
 
-## Optional Rocky Desktop
+## Rocky Desktop
 
 The separate JSON-configured [task 32 desktop](../scripts/32-rocky-desktop/README.md) was provisioned unattended on 2026-10-20 after capacity and package checks. Rocky 9 was selected with user approval because the proposed XFCE/xrdp packages were available in EPEL 9, not the checked EPEL 10 listing. This does not change the installed Rocky 10 test server.
 
@@ -172,7 +257,7 @@ The separate JSON-configured [task 32 desktop](../scripts/32-rocky-desktop/READM
 - VNC screenshot confirmed the graphical login screen. Firefox successfully rendered an HTTPS page as non-admin user `desktop`.
 - xrdp listens only on the guest loopback address. SSH tunnel `127.0.0.1:13389` reached successful RDP security negotiation; no public RDP port or Kubernetes Service was created.
 - Admin `labadmin` uses a dedicated ignored private key and lab passwordless sudo. The separate `desktop` user's password was set privately, and the user confirmed an interactive RDP session. Intentional logout returned FreeRDP code `12` (`ERRINFO_LOGOFF_BY_USER`); xrdp remained active. The server certificate fingerprint was matched through trusted SSH.
-- Existing Rocky, Ubuntu, and Windows resources were not modified. This optional desktop is outside the three-guest isolation matrix; include its memory/disk use in later capacity planning.
+- Existing Rocky, Ubuntu, and Windows resources were not modified. This desktop is outside the three-guest isolation matrix; include its memory/disk use in later capacity planning.
 
 ## Microsegmentation IaC Plan
 

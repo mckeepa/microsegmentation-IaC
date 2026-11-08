@@ -1,0 +1,34 @@
+{
+  "namespacePrefix": "seg",
+  "defaults": {
+    "adminUser": "labadmin",
+    "timezone": "UTC",
+    "waitSeconds": 1200
+  },
+  "vms": [
+    {
+      "name": "web-ubuntu-01",
+      "blueprint": "ubuntu-server",
+      "cpu": 2,
+      "memory": "2Gi",
+      "disk": "10Gi",
+      "labels": { "app": "web", "tier": "frontend", "env": "test" },
+      "ports": [8080],
+      "runState": "running",
+      "owner": "paul",
+      "purpose": "Baseline web target for microsegmentation policy tests"
+    },
+    {
+      "name": "db-rocky-01",
+      "blueprint": "rocky-server",
+      "cpu": 2,
+      "memory": "2Gi",
+      "disk": "10Gi",
+      "labels": { "app": "db", "tier": "backend", "env": "test" },
+      "ports": [5432],
+      "runState": "running",
+      "owner": "paul",
+      "purpose": "Baseline database target for microsegmentation policy tests"
+    }
+  ]
+}

@@ -17,6 +17,8 @@ done
 for command_name in jq virsh ssh ssh-keygen curl sha256sum timeout git base64; do
   command -v "$command_name" >/dev/null 2>&1 || { printf 'Error: %s required.\n' "$command_name" >&2; exit 1; }
 done
+source "$repo_root/scripts/lib/common.sh"
+msl_init "$repo_root"
 jq -e '
   .namespace == "rocky-desktop" and .vmName == "rocky-desktop" and .hostname == "rocky-desktop" and
   .adminUser == "labadmin" and .desktopUser == "desktop" and
@@ -36,31 +38,17 @@ if [[ "$mode" == --plan ]]; then
   printf 'No existing guests/disks are changed. RDP password is set directly in the terminal after provisioning.\n'
   exit 0
 fi
-virtctl="$work_dir/virtctl-v1.9.1"
-export KUBECONFIG="$work_dir/kubeconfig-lab-k8s-01.yaml"
 key="$repo_root/$(jq -r .sshPrivateKey "$config")"
 known_hosts="$repo_root/$(jq -r .sshKnownHosts "$config")"
 image_sha=$(jq -r .image.sha256 "$config")
 wait_seconds=$(jq -r .waitSeconds "$config")
-[[ -x "$virtctl" && -s "$KUBECONFIG" ]] || { printf 'Error: lab kubeconfig/virtctl missing.\n' >&2; exit 1; }
-[[ "$(virsh -c qemu:///system desc lab-k8s-01 --title)" == microsegmentation-iac-lab-k8s-01 &&
-   "$(virsh -c qemu:///system domstate lab-k8s-01)" == running ]] || {
-  printf 'Error: managed outer guest must be running.\n' >&2; exit 1;
-}
-outer_ip=$(virsh -c qemu:///system domifaddr lab-k8s-01 --source lease | awk '$3 == "ipv4" { split($4, address, "/"); print address[1]; exit }')
-if [[ -z "$outer_ip" ]]; then
-  outer_mac=$(virsh -c qemu:///system domiflist lab-k8s-01 | awk '$3 == "default" { print tolower($5); exit }')
-  interfaces=$(virsh -c qemu:///system qemu-agent-command lab-k8s-01 '{"execute":"guest-network-get-interfaces"}')
-  outer_ip=$(jq -r --arg mac "$outer_mac" '[.return[] | select((."hardware-address" // "" | ascii_downcase) == $mac) | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4" and (.["ip-address"] | startswith("169.254.") | not)) | .["ip-address"]] | first // empty' <<< "$interfaces")
-fi
-[[ -n "$outer_ip" ]] || { printf 'Error: outer IP unavailable.\n' >&2; exit 1; }
-ssh_options=(-i "$work_dir/lab-k8s-01_ed25519" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5
-  -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$work_dir/lab-k8s-01_known_hosts")
-remote_kubectl() {
-  local command='sudo -n k3s kubectl' argument quoted
-  for argument in "$@"; do printf -v quoted '%q' "$argument"; command+=" $quoted"; done
-  ssh "${ssh_options[@]}" "labadmin@$outer_ip" "$command"
-}
+msl_assert_lab_files
+msl_assert_outer_vm
+msl_discover_outer_ip
+virtctl="$MSL_VIRTCTL"
+outer_ip="$MSL_OUTER_IP"
+ssh_options=("${MSL_OUTER_SSH_OPTS[@]}")
+remote_kubectl() { msl_remote_kubectl "$@"; }
 namespace_json=$(remote_kubectl get namespace rocky-desktop --ignore-not-found -o json)
 if [[ -n "$namespace_json" ]]; then
   jq -e '.metadata.labels["microsegmentation-lab/managed-by"] == "microsegmentation-iac"' <<< "$namespace_json" >/dev/null || {
@@ -78,21 +66,12 @@ if [[ -n "$vm_json" ]]; then
     any(.spec.template.spec.volumes[]; .name == "osdisk" and .persistentVolumeClaim.claimName == "rocky-desktop-disk")
   ' <<< "$vm_json" >/dev/null || { printf 'Error: refusing unexpected existing desktop VM.\n' >&2; exit 1; }
 fi
-umask 077
-[[ ! -L "$key" && ! -L "$key.pub" && ! -L "$known_hosts" ]] || { printf 'Error: symlinked key files.\n' >&2; exit 1; }
-if [[ "$mode" == --apply && ! -e "$key" ]]; then
-  git -C "$repo_root" check-ignore -q work/rocky-desktop_ed25519 || exit 1
-  [[ ! -e "$key.pub" ]] || { printf 'Error: missing private key; restore matching pair.\n' >&2; exit 1; }
-  ssh-keygen -q -t ed25519 -N '' -C microsegmentation-iac-rocky-desktop -f "$key"
-fi
-[[ -s "$key" ]] || { printf 'Error: desktop private key missing.\n' >&2; exit 1; }
-chmod 0600 "$key"
-public_key=$(ssh-keygen -y -P '' -f "$key" | awk '{print $1 " " $2}')
-[[ "$public_key" == ssh-ed25519\ * ]] || exit 1
+generate_key=false
+if [[ "$mode" == --apply ]]; then generate_key=true; fi
+msl_ensure_keypair "$key" "$known_hosts" microsegmentation-iac-rocky-desktop "$generate_key" work/rocky-desktop_ed25519
+public_key="$MSL_PUBLIC_KEY"
 desktop_ssh() {
-  "$virtctl" ssh labadmin@vmi/rocky-desktop -n rocky-desktop --identity-file="$key" --known-hosts="$known_hosts" \
-    --local-ssh-opts='-o BatchMode=yes' --local-ssh-opts='-o IdentitiesOnly=yes' \
-    --local-ssh-opts='-o ConnectTimeout=5' --local-ssh-opts='-o StrictHostKeyChecking=accept-new' "$@"
+  msl_guest_ssh labadmin rocky-desktop rocky-desktop "$key" "$known_hosts" "$@"
 }
 case "$mode" in
   --ssh) desktop_ssh --local-ssh-opts=-tt; exit ;;
@@ -132,37 +111,12 @@ if [[ "$mode" == --apply ]]; then
   if [[ "$complete" != true ]]; then
     [[ -z "$vm_json" ]] || { printf 'Error: refusing to upload over attached desktop disk.\n' >&2; exit 1; }
     image="$work_dir/rocky-desktop-$image_sha.qcow2"
-    [[ ! -L "$image" && ! -L "$image.part" ]] || exit 1
-    if [[ ! -s "$image" ]]; then
-      curl --fail --location --show-error --continue-at - --retry 3 --output "$image.part" "$(jq -r .image.url "$config")"
-      printf '%s  %s\n' "$image_sha" "$image.part" | sha256sum --check -
-      mv -- "$image.part" "$image"
-    fi
-    printf '%s  %s\n' "$image_sha" "$image" | sha256sum --check -
-    local_pid=""; remote_pid=""
-    cleanup() {
-      if [[ -n "$local_pid" ]]; then kill "$local_pid" 2>/dev/null || true; wait "$local_pid" 2>/dev/null || true; fi
-      if [[ -n "$remote_pid" ]]; then ssh "${ssh_options[@]}" "labadmin@$outer_ip" "sudo -n kill '$remote_pid'" >/dev/null 2>&1 || true; fi
-    }
-    trap cleanup EXIT
-    port=""
-    for candidate in $(seq 18465 18475); do
-      if (exec 3<>"/dev/tcp/127.0.0.1/$candidate") 2>/dev/null; then continue; fi
-      listeners=$(ssh "${ssh_options[@]}" "labadmin@$outer_ip" "ss -H -ltn 'sport = :$candidate'")
-      if [[ -z "$listeners" ]]; then port="$candidate"; break; fi
-    done
-    [[ -n "$port" ]] || { printf 'Error: upload ports busy.\n' >&2; exit 1; }
-    printf -v command 'nohup k3s kubectl port-forward --address 127.0.0.1 -n cdi svc/cdi-uploadproxy %s:443 >/dev/null 2>&1 </dev/null & echo $!' "$port"
-    printf -v quoted '%q' "$command"
-    remote_pid=$(ssh "${ssh_options[@]}" "labadmin@$outer_ip" "sudo -n bash -c $quoted" | tr -d '\r')
-    [[ "$remote_pid" =~ ^[0-9]+$ ]] || exit 1
-    ssh "${ssh_options[@]}" -N -o ExitOnForwardFailure=yes -L "127.0.0.1:$port:127.0.0.1:$port" "labadmin@$outer_ip" &
-    local_pid=$!
-    for attempt in $(seq 1 30); do
-      if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then break; fi
-      kill -0 "$local_pid" 2>/dev/null || exit 1
-      sleep 1
-    done
+    [[ ! -L "$image.part" ]] || exit 1
+    msl_fetch_image "$(jq -r .image.url "$config")" "$image_sha" "$image"
+    trap msl_upload_tunnel_close EXIT
+    msl_find_free_port 18465 18475
+    port="$MSL_FREE_PORT"
+    msl_upload_tunnel_open "$port"
     if [[ -z "$pvc" ]]; then
       jq -n --arg size "$(jq -r .diskSize "$config")" --arg sha "$image_sha" \
         '{apiVersion:"v1",kind:"PersistentVolumeClaim",metadata:{name:"rocky-desktop-disk",namespace:"rocky-desktop",labels:{"microsegmentation-lab/managed-by":"microsegmentation-iac"},annotations:{"microsegmentation-lab/image-sha256":$sha,"cdi.kubevirt.io/storage.bind.immediate.requested":"true"}},spec:{storageClassName:"local-path",accessModes:["ReadWriteOnce"],volumeMode:"Filesystem",resources:{requests:{storage:$size}}}}' |
@@ -170,7 +124,7 @@ if [[ "$mode" == --apply ]]; then
     fi
     "$virtctl" image-upload pvc rocky-desktop-disk -n rocky-desktop --no-create --force-bind \
       --uploadproxy-url="https://127.0.0.1:$port" --insecure --image-path="$image" --wait-secs=300
-    cleanup; trap - EXIT
+    msl_upload_tunnel_close; trap - EXIT
   fi
   if [[ -z "$vm_json" ]]; then
     desktop_script=$(jq -Rs . < "$script_dir/configure-desktop.sh")
@@ -201,15 +155,9 @@ if [[ "$mode" == --apply ]]; then
   remote_kubectl wait --for=create vmi/rocky-desktop -n rocky-desktop --timeout=120s
   remote_kubectl wait --for=condition=Ready vmi/rocky-desktop -n rocky-desktop --timeout=180s
 fi
-deadline=$((SECONDS + wait_seconds))
-printf 'Waiting for desktop key-authenticated SSH and package provisioning...\n'
-until desktop_ssh --command=true >/dev/null 2>&1; do
-  (( SECONDS < deadline )) || { printf 'Error: desktop SSH timeout; no disks removed.\n' >&2; exit 1; }
-  sleep 5
-done
-timeout --foreground "$wait_seconds" "$virtctl" ssh labadmin@vmi/rocky-desktop -n rocky-desktop \
-  --identity-file="$key" --known-hosts="$known_hosts" --local-ssh-opts='-o BatchMode=yes' \
-  --local-ssh-opts='-o IdentitiesOnly=yes' --local-ssh-opts='-o StrictHostKeyChecking=yes' \
-  --command='sudo -n cloud-init status --wait --long'
+msl_wait_for_guest_ssh labadmin rocky-desktop rocky-desktop "$key" "$known_hosts" "$wait_seconds" desktop
+printf 'Desktop SSH is ready. Waiting for cloud-init completion (cloud-init prints its status below)...\n'
+msl_guest_cloudinit_wait labadmin rocky-desktop rocky-desktop "$key" "$known_hosts" "$wait_seconds"
+printf 'Verifying desktop services...\n'
 desktop_ssh --command='set -eu; . /etc/os-release; test "$ID" = rocky; test "${VERSION_ID%%.*}" = 9; cat /etc/os-release; sudo -n true; test "$(getenforce)" = Enforcing; rpm -q xfce4-session firefox xrdp xorgxrdp xrdp-selinux; systemctl is-active sshd qemu-guest-agent xrdp lightdm; ss -H -ltn "sport = :3389" | grep -q "127.0.0.1:3389"; test -z "$(ss -H -ltn "sport = :3389" | grep -v "127.0.0.1:3389")"; firefox --version; printf "PASS Rocky desktop, browser, SELinux, and loopback-only RDP services\n"'
 printf 'Next: --set-desktop-password in your terminal, then --rdp and connect to localhost. --vnc and --ssh are also available.\n'

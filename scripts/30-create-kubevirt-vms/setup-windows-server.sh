@@ -40,7 +40,7 @@ jq -e '
 if [[ "$mode" == --plan ]]; then
   jq . "$config"
   printf '\nPlan: install only onto the new 40 GiB SATA Windows PVC; original Windows/Linux disks are preserved.\n'
-  printf 'Apply gracefully stops Ubuntu and the optional desktop, prepares private Administrator credentials, and starts licensed evaluation setup.\n'
+  printf 'Apply gracefully stops Ubuntu and the Rocky desktop, prepares private Administrator credentials, and starts licensed evaluation setup.\n'
   exit 0
 fi
 if [[ "$mode" == --apply || "$mode" == --prepare ]]; then
@@ -73,8 +73,11 @@ dashboard_owned namespace netpol-test
 vm_json=$(dashboard_kubectl get vm netpol-server-windows -n netpol-test -o json)
 jq -e '.metadata.labels["microsegmentation-lab/managed-by"] == "microsegmentation-iac" and .spec.runStrategy == "Manual" and .metadata.deletionTimestamp == null' <<< "$vm_json" >/dev/null || exit 1
 windows_ssh() {
+  # Pin the project known-hosts file: virtctl's --known-hosts flag is ignored
+  # by its local-ssh wrapper.
   "$virtctl" ssh Administrator@vmi/netpol-server-windows -n netpol-test --identity-file="$key" --known-hosts="$known_hosts" \
     --local-ssh-opts='-o BatchMode=yes' --local-ssh-opts='-o IdentitiesOnly=yes' \
+    --local-ssh-opts="-o UserKnownHostsFile=$known_hosts" \
     --local-ssh-opts='-o ConnectTimeout=5' --local-ssh-opts='-o StrictHostKeyChecking=accept-new' "$@"
 }
 encoded_powershell() { printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 -w0; }

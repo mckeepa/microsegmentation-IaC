@@ -139,7 +139,7 @@ bash scripts/30-create-kubevirt-vms/setup-rocky-access.sh --harden
 
 The bootstrap and hardening steps can be rerun with the same key. After hardening, use `--bootstrap-user labadmin` to repeat provisioning through its installed key and passwordless sudo; the original administrator's password can no longer authenticate over SSH. Existing authorized keys are preserved; unexpected SSH policy files are not overwritten. Do not regenerate the key or delete known-hosts entries to bypass an authentication or host-key mismatch.
 
-These Rocky 10 scripts automate post-installation administration, not installer screens. Fresh unattended Rocky 10 installation needs a separate workflow; do not rebuild the installed server. Ubuntu automation is in its own helper above. The optional Rocky 9 desktop has a separate unattended cloud-image workflow; Windows unattended setup is not implemented.
+These Rocky 10 scripts automate post-installation administration, not installer screens. Fresh unattended Rocky 10 installation needs a separate workflow; do not rebuild the installed server. Ubuntu automation is in its own helper above. The Rocky 9 desktop has a separate unattended cloud-image workflow; Windows unattended setup is not implemented.
 
 ## Open a Rocky Terminal
 
@@ -190,7 +190,7 @@ bash scripts/30-create-kubevirt-vms/setup-windows-server.sh --apply
 
 `--prepare` creates the private credential files, SSH key, XML answer file, and Secret manifest under ignored `work/`; it makes no VM changes. Generated answer files and the Kubernetes Secret contain the administrator password and must be treated as credentials, even though JSON configuration and template files do not contain it. Do not display/diff the generated XML or Secret in chat.
 
-`--apply` checks ownership and media, gracefully stops Ubuntu and the optional desktop, and requires other nested guests to be stopped. It creates a **new 40 GiB SATA disk** (`netpol-server-windows-unattended-disk`) and preserves the original Windows disk and all Linux disks. The answer file partitions only that new disk. SATA avoids requiring a storage driver inside Windows PE; the guest bootstrap installs Server 2025 VirtIO network/serial drivers and the QEMU agent from the pinned driver CD, then enables Windows OpenSSH with the dedicated administrator key. OpenSSH installation requires working Windows package/update access.
+`--apply` checks ownership and media, gracefully stops Ubuntu and the Rocky desktop, and requires other nested guests to be stopped. It creates a **new 40 GiB SATA disk** (`netpol-server-windows-unattended-disk`) and preserves the original Windows disk and all Linux disks. The answer file partitions only that new disk. SATA avoids requiring a storage driver inside Windows PE; the guest bootstrap installs Server 2025 VirtIO network/serial drivers and the QEMU agent from the pinned driver CD, then enables Windows OpenSSH with the dedicated administrator key. OpenSSH installation requires working Windows package/update access.
 
 The helper waits for verified key-authenticated administration, then performs a full stop/start to switch to disk-first boot and detach/delete the password-bearing answer media Secret. Private local credential/answer files remain protected under `work/`; back up or dispose of them deliberately. Reapply does not format a recognized installed disk. If an unrecognized installation disk already exists, the script refuses rather than overwriting it. There is no automatic rollback or guarantee that every Windows update/driver step will succeed: inspect setup errors before retrying.
 
@@ -208,7 +208,7 @@ Console login uses the private password; scripted SSH uses the dedicated key, no
 
 This is the legacy manual alternative for the original VirtIO-disk layout. Do not mix it with an unattended installation already using the new SATA disk. Use only the project-owned `netpol-server-windows` VM already created by the boot-check script.
 
-1. Stop Ubuntu, Rocky, and any optional desktop workloads as needed for capacity. Confirm Windows media and the verified VirtIO driver disk are attached; do not rerun the creator on installed guests.
+1. Stop Ubuntu, Rocky, and any desktop workloads as needed for capacity. Confirm Windows media and the verified VirtIO driver disk are attached; do not rerun the creator on installed guests.
 2. From the physical host, export `KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml"`, run `work/virtctl-v1.9.1 start netpol-server-windows -n netpol-test`, wait for Running, then run `work/virtctl-v1.9.1 vnc netpol-server-windows -n netpol-test`.
 3. Follow Microsoft's evaluation terms and select the intended edition. Choose Desktop Experience if a graphical Windows desktop is required.
 4. Select only the existing 40 GiB guest OS disk. If it is not visible, use Load Driver and the attached driver CD-ROM to select the compatible amd64 VirtIO block-storage driver (`viostor` for the current virtio disk bus). Do not format installer media or unrelated disks.

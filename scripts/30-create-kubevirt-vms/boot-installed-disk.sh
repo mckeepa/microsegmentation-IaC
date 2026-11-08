@@ -32,43 +32,17 @@ for command_name in virsh ssh jq awk; do
     exit 1
   }
 done
-if [[ "$(virsh -c qemu:///system desc "$outer_vm" --title)" != microsegmentation-iac-lab-k8s-01 ||
-      "$(virsh -c qemu:///system domstate "$outer_vm")" != running ]]; then
-  printf 'Error: the project-managed outer VM must be running.\n' >&2
+source "$repo_root/scripts/lib/common.sh"
+msl_init "$repo_root"
+msl_assert_outer_vm
+msl_discover_outer_ip
+guest_ip="$MSL_OUTER_IP"
+if [[ ! -r "$work_dir/${outer_vm}_ed25519" ]]; then
+  printf 'Error: project SSH key unavailable.\n' >&2
   exit 1
 fi
-guest_ip=$(virsh -c qemu:///system domifaddr "$outer_vm" --source lease |
-  awk '$3 == "ipv4" { split($4, address, "/"); print address[1]; exit }')
-if [[ -z "$guest_ip" ]]; then
-  guest_mac=$(virsh -c qemu:///system domiflist "$outer_vm" |
-    awk '$3 == "default" { print tolower($5); exit }')
-  interface_json=$(virsh -c qemu:///system qemu-agent-command "$outer_vm" \
-    '{"execute":"guest-network-get-interfaces"}')
-  guest_ip=$(jq -r --arg mac "$guest_mac" \
-    '[.return[] | select((."hardware-address" // "" | ascii_downcase) == $mac) | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4" and (.["ip-address"] | startswith("169.254.") | not)) | .["ip-address"]] | first // empty' \
-    <<< "$interface_json")
-fi
-if [[ -z "$guest_ip" || ! -r "$work_dir/${outer_vm}_ed25519" ]]; then
-  printf 'Error: guest address or project SSH key unavailable.\n' >&2
-  exit 1
-fi
-ssh_options=(
-  -i "$work_dir/${outer_vm}_ed25519"
-  -o IdentitiesOnly=yes
-  -o BatchMode=yes
-  -o ConnectTimeout=5
-  -o StrictHostKeyChecking=accept-new
-  -o "UserKnownHostsFile=$work_dir/${outer_vm}_known_hosts"
-)
-remote_kubectl() {
-  local remote_command='sudo -n k3s kubectl'
-  local argument quoted
-  for argument in "$@"; do
-    printf -v quoted '%q' "$argument"
-    remote_command+=" $quoted"
-  done
-  ssh "${ssh_options[@]}" "labadmin@$guest_ip" "$remote_command"
-}
+ssh_options=("${MSL_OUTER_SSH_OPTS[@]}")
+remote_kubectl() { msl_remote_kubectl "$@"; }
 
 namespace_json=$(remote_kubectl get namespace "$namespace" -o json)
 vm_json=$(remote_kubectl get vm "$target_vm" -n "$namespace" -o json)

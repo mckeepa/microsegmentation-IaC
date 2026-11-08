@@ -86,4 +86,4 @@ The initial scope is a single-node, disposable K3s/KubeVirt lab that demonstrate
 
 ## Lab VM Plan
 
-Use one outer QEMU/KVM guest for K3s and KubeVirt, then an Ubuntu client, Rocky Linux server, and Windows Server evaluation guest inside KubeVirt for isolation tests. The optional desktop is separate from this test matrix. See the [lab setup guide](doco/LAB-SETUP.md) and the [setup task guides](scripts/README.md). Do not create separate K3s control-plane and worker VMs for the initial proof of concept.
+Use one outer QEMU/KVM guest for K3s and KubeVirt, then an Ubuntu client, Rocky Linux server, and Windows Server evaluation guest inside KubeVirt for isolation tests. The Rocky desktop is a standard lab guest but separate from this test matrix. See the [lab setup guide](doco/LAB-SETUP.md) and the [setup task guides](scripts/README.md). Do not create separate K3s control-plane and worker VMs for the initial proof of concept.

@@ -2,14 +2,14 @@
 
 ## Status
 
-Use the linked task guides for implemented lab commands and the [checkpoint](IMPLEMENTATION-STATUS.md) for the last verified state. The local cluster, Linux guests, optional desktop, and dashboards have tested procedures. Policy enforcement tests, Argo CD delivery, and Azure/NSX adapters remain planned or incomplete. Nothing here is a production runbook.
+Use the linked task guides for implemented lab commands and the [checkpoint](IMPLEMENTATION-STATUS.md) for the last verified state. The local cluster, Linux guests, the Rocky desktop, and dashboards have tested procedures. Policy enforcement tests, Argo CD delivery, and Azure/NSX adapters remain planned or incomplete. Nothing here is a production runbook.
 
 ## Configure the Lab
 
 1. Complete the [lab readiness checklist](LAB-SETUP.md), especially the 150 GiB storage target and `/dev/kvm` access check.
 2. Follow [tasks 10 and 20](../scripts/README.md#task-guides) for the managed outer VM and pinned K3s/OVN/KubeVirt/CDI bootstrap. Do not reinstall an existing lab just to resume work.
 3. Follow [task 25](../scripts/25-prepare-guest-images/README.md) for media and [task 30](../scripts/30-create-kubevirt-vms/README.md) for first-time test-VM creation, Rocky installation, and JSON-configured Ubuntu setup. Do not reapply manual installer templates to installed guests.
-4. Use [task 32](../scripts/32-rocky-desktop/README.md) only for the optional, separate Rocky desktop; it is not a policy-test server.
+4. Use [task 32](../scripts/32-rocky-desktop/README.md) for the standard, separate Rocky desktop; it is not a policy-test server.
 5. Use [task 45](../scripts/45-monitoring-dashboard/README.md) for optional monitoring dashboards.
 6. Configure guest test services and use the [task 35 plan](../scripts/35-verify-kubernetes-isolation/README.md) before claiming isolation. Its legacy runner is not compatible with the current task 30 resources.
 7. Defer Argo CD until the first reviewed policy smoke test works. Its installation and reconciliation workflow are not implemented here.
@@ -30,7 +30,7 @@ Terraform must use separate state and approval workflows for Azure and NSX, and 
 
 ## Routine Health Checks
 
-For the full inventory of monitoring tools and optional Cockpit/Headlamp web dashboards, see [Monitoring and dashboards](MONITORING.md). The [task 45 runbook](../scripts/45-monitoring-dashboard/README.md) covers installation, SSH access from a laptop, and verified read-only/admin switching.
+For interactive guest access, run `bash scripts/list-vms.sh` first to see which VMs are running and which protocols each exposes (SSH, tunneled RDP, HTTP/HTTPS test ports), then use the matching helper from the [VM access guide](../scripts/README.md#vm-access-ssh-and-rdp). For the full inventory of monitoring tools and optional Cockpit/Headlamp web dashboards, see [Monitoring and dashboards](MONITORING.md). The [task 45 runbook](../scripts/45-monitoring-dashboard/README.md) covers installation, SSH access from a laptop, and verified read-only/admin switching.
 
 From the physical host at the repository root, run:
 

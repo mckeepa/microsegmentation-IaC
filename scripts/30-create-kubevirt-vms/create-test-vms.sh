@@ -45,6 +45,9 @@ for command_name in virsh ssh scp sha256sum stat awk jq python3; do
   fi
 done
 
+source "$repo_root/scripts/lib/common.sh"
+msl_init "$repo_root"
+
 host_kubeconfig="$work_dir/kubeconfig-${vm_name}.yaml"
 ssh_key="$work_dir/${vm_name}_ed25519"
 known_hosts="$work_dir/${vm_name}_known_hosts"
@@ -60,42 +63,11 @@ for file_path in "$host_kubeconfig" "$ssh_key" "$rocky_iso" "$ubuntu_iso" "$wind
   fi
 done
 
-vm_title=$(virsh -c qemu:///system desc "$vm_name" --title 2>/dev/null || true)
-if [[ "$vm_title" != "$managed_title" ]]; then
-  printf 'Error: VM %s is not marked as managed by this project.\n' "$vm_name" >&2
-  exit 1
-fi
-vm_state=$(virsh -c qemu:///system domstate "$vm_name" | tr -d '\r')
-if [[ "$vm_state" != "running" ]]; then
-  printf 'Error: VM %s must be running; current state: %s.\n' "$vm_name" "$vm_state" >&2
-  exit 1
-fi
+msl_assert_outer_vm
+msl_discover_outer_ip
+guest_ip="$MSL_OUTER_IP"
 
-guest_ip=$(virsh -c qemu:///system domifaddr "$vm_name" --source lease | awk '$3 == "ipv4" { split($4, address, "/"); print address[1]; exit }')
-if [[ -z "$guest_ip" ]]; then
-  guest_mac=$(virsh -c qemu:///system domiflist "$vm_name" | awk '$3 == "default" { print tolower($5); exit }')
-  interface_json=$(virsh -c qemu:///system qemu-agent-command "$vm_name" \
-    '{"execute":"guest-network-get-interfaces"}') || {
-    printf 'Error: no DHCP lease and QEMU guest agent is unavailable for %s.\n' "$vm_name" >&2
-    exit 1
-  }
-  guest_ip=$(jq -r --arg mac "$guest_mac" \
-    '.return[] | select((."hardware-address" // "" | ascii_downcase) == $mac) | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4" and (.["ip-address"] | startswith("169.254.") | not)) | .["ip-address"]' \
-    <<< "$interface_json" | awk 'NR == 1 { print; exit }')
-  if [[ -z "$guest_ip" ]]; then
-    printf 'Error: no DHCP lease or host-reachable guest-agent IPv4 found for %s.\n' "$vm_name" >&2
-    exit 1
-  fi
-fi
-
-ssh_options=(
-  -i "$ssh_key"
-  -o IdentitiesOnly=yes
-  -o BatchMode=yes
-  -o ConnectTimeout=5
-  -o StrictHostKeyChecking=accept-new
-  -o "UserKnownHostsFile=$known_hosts"
-)
+ssh_options=("${MSL_OUTER_SSH_OPTS[@]}")
 destination="$vm_user@$guest_ip"
 
 media_files=("$rocky_iso" "$ubuntu_iso" "$windows_iso")
@@ -252,15 +224,7 @@ if ! (exec 3<>"/dev/tcp/127.0.0.1/$local_upload_port") 2>/dev/null; then
   exit 1
 fi
 
-remote_kubectl() {
-  local remote_command='sudo -n k3s kubectl'
-  local argument quoted
-  for argument in "$@"; do
-    printf -v quoted '%q' "$argument"
-    remote_command+=" $quoted"
-  done
-  ssh "${ssh_options[@]}" "$destination" "$remote_command"
-}
+remote_kubectl() { msl_remote_kubectl "$@"; }
 
 apply_remote_manifest() {
   ssh "${ssh_options[@]}" "$destination" 'sudo -n k3s kubectl apply -f -' < "$1"
