@@ -289,6 +289,14 @@ def wait_for_ssh(vm: OuterVM, timeout_s: int = 2400) -> str:
     started = time.monotonic()
     next_status_at = started + 30
     while True:
+        # The one-shot install boot ends with the guest's final reboot being a
+        # libvirt destroy; starting the domain again boots the installed disk.
+        # Probes during the installer phase record the live installer's
+        # transient host key, so drop the known-hosts file before the real
+        # system's key is pinned.
+        if domain_state(vm.name) == "shut off":
+            (secrets_dir() / f"{vm.name}_known_hosts").unlink(missing_ok=True)
+            _virsh(["start", vm.name], f"boot {vm.name} from disk after autoinstall")
         ip = discover_ip(vm.name)
         if ip:
             probe = run(
