@@ -190,6 +190,54 @@ def provision_cluster(vm: OuterVM) -> None:
     typer.echo("Cluster ready: K3s + Cilium + KubeVirt + CDI all deployed.")
 
 
+# Pods not Running/Completed with full ready counts, as "namespace/name" lines.
+UNHEALTHY_PODS_COMMAND = (
+    f"{KUBECTL} get pods -A --no-headers 2>/dev/null | "
+    'awk \'{split($3,r,"/"); if (($4!="Running" && $4!="Completed" && $4!="Succeeded")'
+    ' || ($4=="Running" && r[1]!=r[2])) print $1"/"$2}\''
+)
+
+
+def up(vm: OuterVM, start_vm: bool = False) -> int:
+    """Recover the lab after a laptop or outer-VM restart (FR-1.4). Returns exit code."""
+    from lab.host import _virsh, assert_managed, domain_exists, domain_state, wait_for_ssh
+
+    if not domain_exists(vm.name):
+        typer.secho(f"Error: VM {vm.name} does not exist.", err=True, fg=typer.colors.RED)
+        typer.echo("NEXT: run `lab provision` to create it.")
+        return 1
+    assert_managed(vm)
+    state = domain_state(vm.name)
+    if state != "running":
+        if not start_vm:
+            start_vm = typer.confirm(f"Outer VM is {state}. Start it now?", default=True)
+        if not start_vm:
+            typer.echo(f"Outer VM left {state}. Rerun with --start-vm to start it.")
+            return 1
+        _virsh(["start", vm.name], f"start outer VM {vm.name}")
+    typer.echo("Waiting for outer VM SSH (the DHCP address can change after a restart)...")
+    ip = wait_for_ssh(vm, timeout_s=600)
+    typer.echo(f"Outer VM SSH ready at {ip}.")
+
+    # v1 lesson: pods that crash-looped during boot need their CrashLoopBackOff
+    # timers (up to ~5 min) to expire; wait for recovery instead of deleting them.
+    cluster = Cluster(vm, ip=ip)
+    unhealthy = ""
+
+    def pods_recovered() -> bool:
+        nonlocal unhealthy
+        unhealthy = cluster.rsh(
+            UNHEALTHY_PODS_COMMAND, "list unhealthy pods", check=False
+        ).stdout.strip()
+        return unhealthy == ""
+
+    try:
+        cluster.wait_until("all pods recovered", pods_recovered, timeout_s=600, interval_s=15)
+    except ProvisionError:
+        typer.secho(f"Pods still unhealthy after 10 minutes:\n{unhealthy}", fg=typer.colors.RED)
+    return status(vm)
+
+
 def status(vm: OuterVM) -> int:
     """One-screen health report ending in a NEXT: hint (FR-1.3). Returns exit code."""
     from lab.host import domain_exists, domain_state, domain_title

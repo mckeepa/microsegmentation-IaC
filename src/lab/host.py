@@ -301,18 +301,23 @@ def ssh_run(
     )
 
 
-def wait_for_ssh(vm: OuterVM, timeout_s: int = 2400) -> str:
-    """Wait for autoinstall + reboot + SSH, with a heartbeat (NFR-3.3). Returns the IP."""
+def wait_for_ssh(vm: OuterVM, timeout_s: int = 2400, after_install: bool = False) -> str:
+    """Wait for SSH with a heartbeat (NFR-3.3). Returns the IP.
+
+    With after_install=True, a shut-off domain is expected (the one-shot
+    install boot ends with the guest's final reboot being a libvirt destroy):
+    it is started to boot the installed disk, and the known-hosts file is
+    dropped because probes during the installer phase pinned the live
+    installer's transient host key. Outside provisioning the pinned key is
+    kept and a shut-off domain is an error.
+    """
     deadline = time.monotonic() + timeout_s
     started = time.monotonic()
     next_status_at = started + 30
     while True:
-        # The one-shot install boot ends with the guest's final reboot being a
-        # libvirt destroy; starting the domain again boots the installed disk.
-        # Probes during the installer phase record the live installer's
-        # transient host key, so drop the known-hosts file before the real
-        # system's key is pinned.
         if domain_state(vm.name) == "shut off":
+            if not after_install:
+                raise ProvisionError(f"{vm.name} is shut off; start it and rerun")
             (secrets_dir() / f"{vm.name}_known_hosts").unlink(missing_ok=True)
             _virsh(["start", vm.name], f"boot {vm.name} from disk after autoinstall")
         ip = discover_ip(vm.name)
@@ -367,5 +372,5 @@ def provision_outer_vm(vm: OuterVM, dry_run: bool = False) -> None:
     except CommandError as error:
         raise ProvisionError(f"virt-install failed: {error}") from error
     typer.echo(f"{vm.name} created; Ubuntu autoinstall is running (~15-25 min).")
-    ip = wait_for_ssh(vm)
+    ip = wait_for_ssh(vm, after_install=True)
     typer.echo(f"Outer VM ready: {vm.user}@{ip} (key: {secrets_dir() / (vm.name + '_ed25519')})")

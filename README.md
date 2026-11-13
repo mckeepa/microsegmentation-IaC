@@ -51,7 +51,8 @@ provision`); the account has passwordless sudo and no usable password.
 ## Status
 
 - [x] Phase 0 — requirements and structure defined (this branch)
-- [ ] Phase 1 — foundation: outer VM + K3s + KubeVirt, one health command
+- [x] Phase 1 — foundation: outer VM + K3s + KubeVirt, one health command
+      (`lab provision`, `lab status`, `lab up`)
 - [ ] Phase 2 — VM lifecycle: declarative add/remove, one-command SSH/RDP
 - [ ] Phase 3 — microsegmentation: NetworkPolicy test harness on guest traffic
 - [ ] Phase 4 — switchboard: web UI for status and tasks, reusing the same core

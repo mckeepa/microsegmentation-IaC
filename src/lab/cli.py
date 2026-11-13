@@ -47,9 +47,21 @@ def status() -> None:
 
 
 @app.command()
-def up() -> None:
+def up(
+    start_vm: Annotated[
+        bool, typer.Option("--start-vm", help="Start the outer VM without prompting.")
+    ] = False,
+) -> None:
     """Recover the whole lab after a laptop or outer-VM restart (FR-1.4)."""
-    _todo(1)
+    from lab import cluster, host
+    from lab.config import ConfigError, load_config
+
+    try:
+        lab_config = load_config()
+        raise typer.Exit(cluster.up(lab_config.outer_vm, start_vm=start_vm))
+    except (ConfigError, host.ProvisionError) as error:
+        typer.secho(f"Error: {error}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from None
 
 
 @app.command()
