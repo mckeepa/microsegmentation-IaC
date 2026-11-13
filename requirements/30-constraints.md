@@ -13,16 +13,18 @@
 | --- | --- |
 | Outer VM OS | Ubuntu Server 24.04 LTS |
 | K3s | v1.36.5+k3s1 |
-| CNI | OVN-Kubernetes v1.4.0 — **re-evaluate**: see below |
+| CNI | **Cilium** (v2 decision — pin latest stable in `versions.py`); v1 used OVN-Kubernetes v1.4.0 |
 | KubeVirt / virtctl | v1.9.1 |
 | CDI | v1.66.1 |
 | Helm | v3.22.1 |
 
-**CNI decision to make in design:** v1 chose OVN-Kubernetes and it caused the
-worst operational pain (route loss on reboot, encap IP pinned to one DHCP
-lease, CNI config conflicts). v2 must explicitly evaluate whether a simpler
-NetworkPolicy-capable CNI (e.g. Calico or Cilium) meets FR-4 before adopting
-OVN again. A CNI change requires a fresh cluster — never switch in place.
+**CNI decision: Cilium.** v1's OVN-Kubernetes caused the worst operational
+pain (route loss on reboot, encap IP pinned to one DHCP lease, CNI config
+conflicts). v2 uses Cilium: it enforces standard NetworkPolicy (FR-4) and its
+CiliumNetworkPolicy adds Layer 7 inspection and rules (HTTP methods/paths,
+DNS) as a future capability. K3s must still be installed with Flannel and the
+embedded network-policy controller disabled; a CNI change requires a fresh
+cluster — never switch in place.
 
 ## Existing lab
 

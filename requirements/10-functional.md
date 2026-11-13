@@ -56,6 +56,10 @@ IDs are stable; reference them in design docs, commits, and tests.
   guest-originated traffic (not just pod probes), and emits a pass/fail matrix.
 - **FR-4.3** Test definitions declare expected reachability (source VM, target
   VM, port, expect allow|deny) alongside the policies they validate.
+- **FR-4.4** The CNI is Cilium so segmentation can later grow from L3/L4 to
+  Layer 7 rules (CiliumNetworkPolicy: HTTP methods/paths, DNS). L7 rule
+  authoring itself is out of scope for v2 phases 1–4; the platform must not
+  block it.
 
 ## FR-5 Switchboard (phase 4)
 

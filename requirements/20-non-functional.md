@@ -33,7 +33,7 @@
 
 - **NFR-4.1** A laptop reboot is a first-class scenario: `lab up` must bring the
   lab back without manual steps, including known failure modes (DHCP lease
-  change, OVN route loss, pod crash-loop timers).
+  change, CNI/route loss after reboot, pod crash-loop timers).
 - **NFR-4.2** State the lab depends on (which VM, which IP, which keys) is
   discovered or stored in `work/`, never hardcoded in the operator's head.
 

@@ -72,10 +72,11 @@ blueprint folder, not a new script.
 
 ## Key design decisions (to confirm in phase 1)
 
-1. **CNI:** evaluate Cilium/Calico vs. OVN-Kubernetes against FR-4 before
-   install — v1's worst pain was OVN-specific (see
-   [lessons](../requirements/40-lessons-learned.md), [constraints](../requirements/30-constraints.md)).
-   Decision recorded here as a short ADR.
+1. **CNI: Cilium** (decided — see [constraints](../requirements/30-constraints.md)).
+   Chosen over OVN-Kubernetes (v1's worst operational pain, see
+   [lessons](../requirements/40-lessons-learned.md)) and for its L7 path:
+   CiliumNetworkPolicy enables future Layer 7 inspection/rules (FR-4.4).
+   Validate KubeVirt guest-traffic enforcement in phase 1 health checks.
 2. **Python packaging:** `uv` + `pyproject.toml`, `typer` for CLI, `ruff` +
    `mypy` + `pytest` as the one-command check (NFR-2.2). Talk to Kubernetes
    via the official `kubernetes` client where practical; shell out to
