@@ -24,7 +24,8 @@
 - **NFR-3.1** Every command is safe to rerun; destructive actions require an
   explicit flag or interactive confirmation and honor ownership markers.
 - **NFR-3.2** Secrets (keys, passwords, kubeconfig) live only in gitignored
-  `work/`; a pre-commit guard rejects accidental commits of key material.
+  `state/secrets/`; large cached downloads live in `state/cache/`; a pre-commit
+  guard rejects accidental commits of key material.
 - **NFR-3.3** Long waits print a heartbeat (elapsed, current phase, last error)
   at least every 30 s; failures end with the real underlying error, not a
   generic wrapper message.
@@ -35,7 +36,7 @@
   lab back without manual steps, including known failure modes (DHCP lease
   change, CNI/route loss after reboot, pod crash-loop timers).
 - **NFR-4.2** State the lab depends on (which VM, which IP, which keys) is
-  discovered or stored in `work/`, never hardcoded in the operator's head.
+  discovered or stored in `state/`, never hardcoded in the operator's head.
 
 ## NFR-5 Resource fit
 

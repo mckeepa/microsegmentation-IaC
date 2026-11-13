@@ -33,7 +33,7 @@ IDs are stable; reference them in design docs, commits, and tests.
 - **FR-2.5** `lab vm start|stop|restart <name>` manage run state; `lab vm
   console <name>` opens the serial/VNC console for boot debugging.
 - **FR-2.6** Guest images are downloaded once, checksum-verified, and cached in
-  `work/`.
+  `state/cache/`.
 
 ## FR-3 Access (phase 2)
 
@@ -45,8 +45,8 @@ IDs are stable; reference them in design docs, commits, and tests.
   the command exiting and are cleaned up/reopened by `lab up`.
 - **FR-3.3** Desktop password management: `lab vm set-password <vm>` sets the
   RDP/graphical password; SSH never uses passwords; nothing secret is committed.
-- **FR-3.4** Per-VM SSH keys and known-hosts files are generated into `work/`
-  automatically and pinned on every connection.
+- **FR-3.4** Per-VM SSH keys and known-hosts files are generated into
+  `state/secrets/` automatically and pinned on every connection.
 
 ## FR-4 Microsegmentation (phase 3)
 
@@ -67,4 +67,5 @@ IDs are stable; reference them in design docs, commits, and tests.
   `lab vm list`, reusing the same Python core (no logic duplication).
 - **FR-5.2** The UI can run whitelisted tasks (start/stop VM, open tunnel,
   policy test) with the same guards as the CLI.
-- **FR-5.3** Loopback-only listener, authenticated, secrets kept in `work/`.
+- **FR-5.3** Loopback-only listener, authenticated, secrets kept in
+  `state/secrets/`.

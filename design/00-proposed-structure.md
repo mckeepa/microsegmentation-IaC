@@ -27,7 +27,9 @@ folders, one entry point) inviolable.
 │   └── rocky-desktop/
 ├── policies/              # segment manifests + declared flow expectations
 ├── tests/                 # pytest: unit tests + policy test definitions
-└── work/                  # gitignored runtime state (keys, images, kubeconfig)
+└── state/                 # gitignored local runtime state
+    ├── secrets/           #   keys, known-hosts, kubeconfig, passwords, tunnel PIDs
+    └── cache/             #   checksum-verified downloaded images (ISOs, qcow2)
 ```
 
 Phase 4 adds `src/lab/web/` (switchboard, FastAPI serving the same core

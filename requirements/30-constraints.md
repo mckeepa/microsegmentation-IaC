@@ -31,7 +31,9 @@ cluster — never switch in place.
 - The v1 lab (`lab-k8s-01` outer VM and its nested guests) keeps running from
   `main` until v2 phase 2 is usable; then it is torn down and rebuilt with v2
   tooling. v2 must not adopt or mutate v1-created resources.
-- `work/` is shared and gitignored; v2 may reuse cached ISOs/images (checksum
+- v2 keeps its runtime state in gitignored `state/` (`state/secrets/` for key
+  material, `state/cache/` for images). v1's `work/` remains on disk and
+  gitignored; v2 may seed `state/cache/` from its cached ISOs/images (checksum
   verified) but must generate its own keys and state under distinct names.
 
 ## Non-negotiable ground rules (carried from v1)

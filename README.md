@@ -13,7 +13,7 @@ Kubernetes/KubeVirt, and get an SSH or RDP session to any of them in one command
 | --- | --- |
 | [requirements/](requirements/) | What v2 must do, in what order, and what we learned from v1 |
 | [design/](design/) | Proposed repository structure and architecture for the solution |
-| `work/` (gitignored) | Keys, images, kubeconfig, and other runtime state — never committed |
+| `state/` (gitignored) | Local runtime state — `state/secrets/` (keys, kubeconfig, passwords) and `state/cache/` (downloaded images) — never committed |
 
 ## Status
 
