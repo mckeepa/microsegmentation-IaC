@@ -177,6 +177,23 @@ class Cluster:
             ),
             timeout_s=900,
         )
+        # K3s local-path is unknown to CDI, so its StorageProfile has no access
+        # mode and every DataVolume fails with ErrClaimNotValid. Declare it.
+        self.wait_until(
+            "local-path StorageProfile created",
+            lambda: self._check(
+                f"{KUBECTL} get storageprofile local-path", "probe StorageProfile"
+            ),
+            timeout_s=120,
+        )
+        claim_properties = (
+            '{"spec":{"claimPropertySets":'
+            '[{"accessModes":["ReadWriteOnce"],"volumeMode":"Filesystem"}]}}'
+        )
+        self.rsh(
+            f"{KUBECTL} patch storageprofile local-path --type=merge -p '{claim_properties}'",
+            "declare access mode in local-path StorageProfile",
+        )
 
     def export_kubeconfig(self) -> None:
         kubeconfig = self.rsh(

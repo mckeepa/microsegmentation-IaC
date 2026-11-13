@@ -22,9 +22,10 @@ vms:
     segment: db
     ports: [22, 5432]
     run: true
-  - name: desk-01
-    blueprint: rocky-desktop
-    size: {vcpus: 2, memory_gib: 4, disk_gib: 20}
-    segment: mgmt
-    ports: [22, 3389]
-    run: false
+  # desk-01 returns when the rocky-desktop blueprint and `lab rdp` land (phase 2b):
+  # - name: desk-01
+  #   blueprint: rocky-desktop
+  #   size: {vcpus: 2, memory_gib: 4, disk_gib: 20}
+  #   segment: mgmt
+  #   ports: [22, 3389]
+  #   run: false
