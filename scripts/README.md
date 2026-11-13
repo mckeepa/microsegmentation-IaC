@@ -57,6 +57,7 @@ Common recovery references:
 - Outer VM disk too small: [resize the existing VM disk](10-create-lab-vm/README.md#resize-the-existing-vm-disk).
 - Outer VM memory sizing: [inspect host/VM RAM and choose a next-boot allocation](10-create-lab-vm/README.md#change-the-vm-memory). This cannot add physical RAM or fix a host-memory shortage by itself.
 - No SSH / DHCP lease expired: [task 20 troubleshooting](20-install-k3s-kubevirt/README.md#check-progress-and-troubleshoot) and `repair-guest-network.sh --diagnose`.
+- Nested VM Running/Ready but SSH waits report `dialing VM: dial tcp :22: connect: connection refused` and the VMI shows no IP: the guest has no IPv4. KubeVirt masquerade MACs derive from the launcher pod IP and change on every restart, so an Ubuntu guest created before 2026-11-08 has a MAC-pinned `/etc/netplan/50-cloud-init.yaml` that stops matching. The cloud-init builders now match by interface name; repair an older guest once through the guest agent (`kubectl exec` into its `virt-launcher` pod, then `virsh qemu-agent-command` with `guest-exec`) by replacing that file with a name-matched DHCP config and running `netplan apply`.
 - Task 30 VM/PVC/image-pull failures: [task 30 troubleshooting](30-create-kubevirt-vms/README.md#troubleshooting).
 
 ## VM Access (SSH and RDP)
@@ -89,12 +90,15 @@ seg-web        web-ubuntu-01  Running  True   10.244.0.51  ...  22/ssh,8080/http
 | `netpol-client` (Ubuntu client) | SSH | `bash scripts/30-create-kubevirt-vms/setup-ubuntu-client.sh --ssh` |
 | `netpol-server-rocky` (Rocky 10 server) | Scripted SSH checks after install/bootstrap | `bash scripts/30-create-kubevirt-vms/setup-rocky-access.sh --verify` |
 | `netpol-server-windows` | SSH after a verified installation | `bash scripts/30-create-kubevirt-vms/setup-windows-server.sh --ssh` |
-| `rocky-desktop` | SSH, VNC console, and tunneled RDP (the only VM with a desktop/RDP) | `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --ssh` / `--vnc` / `--rdp`; see its [quick start](32-rocky-desktop/README.md) |
+| `rocky-desktop` | SSH, VNC console, and tunneled RDP | `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --ssh` / `--vnc` / `--rdp`; see its [quick start](32-rocky-desktop/README.md) |
+| `ubuntu-desktop` | SSH, VNC console, and tunneled RDP | `bash scripts/33-ubuntu-desktop/setup-ubuntu-desktop.sh --ssh` / `--vnc` / `--rdp`; see its [quick start](33-ubuntu-desktop/README.md) |
 | Fleet VMs (`web-ubuntu-01`, `db-rocky-01`, ...) | SSH | `bash scripts/34-vm-fleet/setup-vm-fleet.sh --ssh <name>` |
 
-Every other guest besides `rocky-desktop` is a headless server image: no desktop environment, no RDP, no VNC login session. For RDP — including from another machine on your network — follow the [task 32 RDP sections](32-rocky-desktop/README.md#rdp-access).
+To start both desktops and open both RDP tunnels with one command, use the [desktop auto-start helper](#desktop-auto-start-helper).
 
-**Passwords:** SSH never uses one. The desktop's `desktop` user needs a password only for RDP/graphical login (`setup-rocky-desktop.sh --set-desktop-password`). Fleet VMs can optionally get an emergency console password with `setup-vm-fleet.sh --set-password <name>`; this does not enable SSH password login. No password is stored in the repository or recoverable; forgotten passwords are reset the same way they were set.
+Every other guest besides the two desktops is a headless server image: no desktop environment, no RDP, no VNC login session. For RDP — including from another machine on your network — follow the [task 32 RDP sections](32-rocky-desktop/README.md#rdp-access) (task 33 works identically on port `13390`).
+
+**Passwords:** SSH never uses one. Each desktop's `desktop` user needs a password only for RDP/graphical login (`setup-rocky-desktop.sh --set-desktop-password` / `setup-ubuntu-desktop.sh --set-desktop-password`). Fleet VMs can optionally get an emergency console password with `setup-vm-fleet.sh --set-password <name>`; this does not enable SSH password login. No password is stored in the repository or recoverable; forgotten passwords are reset the same way they were set.
 
 **Guest IPv4 addressing:** nested VMs use KubeVirt masquerade networking, so *inside* any guest `ip a` always shows the same NAT-internal `10.0.2.2/24` (gateway `10.0.2.1`). That is normal and does not mean IPv4 is broken. The address other workloads reach the VM on is its launcher pod IP (`10.244.0.x`), shown by `sudo k3s kubectl get vmi -A` in the outer VM or `setup-vm-fleet.sh --status`. Use the pod IP for VM-to-VM traffic and policy tests; only ports declared in the VM spec are forwarded through the NAT.
 
@@ -118,6 +122,20 @@ The K3s/OVN-Kubernetes/KubeVirt lab has passed component-health and guest-boot c
 
 Common plumbing lives in [lib/common.sh](lib/common.sh) and is sourced by the task scripts: required-command checks, managed-outer-VM guards, outer-IP discovery, `remote kubectl`, `virtctl ssh` wrappers with pinned per-guest known-hosts files, heartbeat SSH wait loops, checksum-verified image fetching, and CDI upload tunnels. New scripts must use these `msl_*` helpers instead of re-implementing them. The dashboard tasks additionally share [45-monitoring-dashboard/common.sh](45-monitoring-dashboard/common.sh) for dashboard-specific access.
 
-## Rocky Desktop
+## Desktop Auto-Start Helper
+
+One command starts both desktop VMs (`rocky-desktop` and `ubuntu-desktop`) and opens both loopback RDP tunnels as background processes, so no dedicated tunnel terminals are needed:
+
+```sh
+bash scripts/start-desktops.sh            # start VMs and tunnels (safe to rerun)
+bash scripts/start-desktops.sh --status   # show tunnel state
+bash scripts/start-desktops.sh --stop     # close tunnels; VMs keep running
+```
+
+It starts the outer `lab-k8s-01` VM if it is off, runs task 20's guarded `repair-guest-network.sh --repair` automatically when outer-VM SSH is unreachable (the known OVN uplink problem), skips desktops that are not provisioned yet, and leaves healthy tunnels alone. Tunnel PIDs and logs live in ignored `work/rdp-tunnel-<vm>.{pid,log}`. The tunnels survive the script exiting but not a host reboot or VM restart; rerun the script after either. Connect as `desktop` to `127.0.0.1:13389` (Rocky) or `127.0.0.1:13390` (Ubuntu); each desktop's password is set with its own `--set-desktop-password` helper.
+
+## Desktops
 
 [Unattended Rocky desktop](32-rocky-desktop/README.md): JSON-configured separate Rocky 9/XFCE/Firefox VM with key-based SSH, a VNC console, and localhost-only tunneled RDP. It is not part of the three-guest isolation-test matrix and does not replace the existing Rocky server. Check capacity before running it alongside test workloads.
+
+[Unattended Ubuntu GNOME desktop](33-ubuntu-desktop/README.md): JSON-configured separate Ubuntu 24.04/GNOME/Firefox VM with the same key-based SSH, VNC console, and localhost-only tunneled RDP model as task 32, on local port `13390`. GNOME needs more memory and disk than XFCE; check capacity before provisioning.

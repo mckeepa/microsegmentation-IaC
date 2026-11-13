@@ -1,0 +1,19 @@
+{
+  "namespace": "ubuntu-desktop",
+  "vmName": "ubuntu-desktop",
+  "hostname": "ubuntu-desktop",
+  "adminUser": "labadmin",
+  "desktopUser": "desktop",
+  "timezone": "UTC",
+  "memory": "8Gi",
+  "cores": 4,
+  "diskSize": "40Gi",
+  "image": {
+    "url": "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img",
+    "sha256": "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
+  },
+  "sshPrivateKey": "work/ubuntu-desktop_ed25519",
+  "sshKnownHosts": "work/ubuntu-desktop_known_hosts",
+  "rdpLocalPort": 13390,
+  "waitSeconds": 3600
+}

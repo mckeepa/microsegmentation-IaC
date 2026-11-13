@@ -89,7 +89,8 @@ colorize_status() {
     | select($running == "false" or ($vmi != null and $vmi.status.phase == "Running"))
     | (($vm.spec.template.spec.domain.devices.interfaces[0].ports // []) | map(.port)) as $ports
     | (if ($ports | length) == 0 then "all" else ($ports | map("\(.)/\(service_name(.))") | join(",")) end) as $ports_text
-    | ((($vm.metadata.labels // {})["microsegmentation-lab/role"] == "desktop")) as $is_desktop
+    | ((($vm.metadata.labels // {})["microsegmentation-lab/role"] == "desktop")
+       or ((($vm.metadata.labels // {})["microsegmentation-lab/desktop"] // "") != "")) as $is_desktop
     | ((if ($ports | index(22)) != null or ($ports | length) == 0 then ["ssh (virtctl helper)"] else [] end)
        + (if $is_desktop then ["rdp (ssh tunnel)", "vnc (console)"] else [] end)
        + ($ports | map(select(. != 22) | service_name(.) + " :" + (. | tostring)) | unique)
@@ -119,4 +120,5 @@ colorize_status() {
 printf '\nIP is the cluster-reachable launcher pod address; inside every guest, ip a shows the NAT-internal 10.0.2.2 instead.\n'
 printf 'PORTS lists the NAT-forwarded guest ports ("all" = no restriction declared); ACCESS is how to connect.\n'
 printf 'SSH helpers: fleet VMs use scripts/34-vm-fleet/setup-vm-fleet.sh --ssh <name>; others are listed in scripts/README.md#vm-access-ssh-and-rdp.\n'
-printf 'RDP exists only on the desktop and only through its SSH tunnel: scripts/32-rocky-desktop/setup-rocky-desktop.sh --rdp\n'
+printf 'RDP is loopback-only and reached through an SSH tunnel: scripts/32-rocky-desktop/setup-rocky-desktop.sh --rdp for the\n'
+printf 'task 32/33 desktops, or scripts/34-vm-fleet/setup-vm-fleet.sh --rdp <name> for desktop-blueprint fleet VMs.\n'

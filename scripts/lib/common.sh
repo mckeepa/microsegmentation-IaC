@@ -126,6 +126,19 @@ msl_guest_ssh_strict() {
     --local-ssh-opts='-o StrictHostKeyChecking=yes' "$@"
 }
 
+# msl_ssh_error_summary <ssh-output>: pick the most informative line from a
+# failed SSH attempt. virtctl's local-ssh wrapper always ends with a generic
+# "exit status N" line (often preceded by "Connection closed by UNKNOWN" proxy
+# noise), so prefer the last line above those (the real OpenSSH or API-proxy
+# error) and fall back to the last line when nothing else exists.
+msl_ssh_error_summary() {
+  local summary
+  summary=$(grep -v -e '^exit status [0-9]*$' -e '^Connection closed by UNKNOWN' \
+    -e '^[[:space:]]*$' <<< "$1" | tail -n 1)
+  [[ -n "$summary" ]] || summary=$(tail -n 1 <<< "$1")
+  printf '%s' "$summary"
+}
+
 # msl_wait_for_guest_ssh <user> <vm> <namespace> <key> <known_hosts> <timeout_s> <label>:
 # retry guest SSH until it succeeds, printing a heartbeat every 30 seconds with
 # the elapsed time, VMI phase, and the most recent SSH error.
@@ -137,13 +150,13 @@ msl_wait_for_guest_ssh() {
   until ssh_error=$(msl_guest_ssh "$user" "$vm" "$namespace" "$key" "$known_hosts" --command=true 2>&1 >/dev/null); do
     if (( SECONDS >= deadline )); then
       printf 'Error: %s SSH not ready within %ss; no disks were changed. Last SSH error: %s\n' \
-        "$label" "$timeout_s" "$(tail -n 1 <<< "$ssh_error")" >&2
+        "$label" "$timeout_s" "$(msl_ssh_error_summary "$ssh_error")" >&2
       return 1
     fi
     if (( SECONDS >= next_status_at )); then
       vmi_phase=$(msl_remote_kubectl get vmi "$vm" -n "$namespace" --ignore-not-found -o jsonpath='{.status.phase}' 2>/dev/null || true)
       printf 'Still waiting (%ss elapsed): VMI phase %s; SSH not ready: %s\n' \
-        "$((SECONDS - wait_started))" "${vmi_phase:-unknown}" "$(tail -n 1 <<< "$ssh_error")"
+        "$((SECONDS - wait_started))" "${vmi_phase:-unknown}" "$(msl_ssh_error_summary "$ssh_error")"
       next_status_at=$((SECONDS + 30))
     fi
     sleep 5

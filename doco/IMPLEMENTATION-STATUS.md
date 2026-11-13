@@ -2,7 +2,7 @@
 
 ## Session Handoff - 2026-11-08
 
-This is the latest checkpoint and supersedes the 2026-11-05 handoff below. **End of day 2026-11-08: the lab was shut down cleanly for a laptop power-off.** All four nested guests (`rocky-desktop`, `netpol-client`, `web-ubuntu-01`, `db-rocky-01`) were stopped gracefully (all VMIs gone), the dashboard/Switchboard tunnels were closed, and `lab-k8s-01` completed a graceful `virsh shutdown` (about 3.5 minutes — normal for the K3s/OVS teardown; SSH drops early during it). No installation was in progress. Resume with `bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop`; reopen tunnels afterward. During the day the lab had all four guests Running and Ready, and all three dashboards (Switchboard, Headlamp, Cockpit) reinstalled and verified reachable from the laptop.
+This is the latest checkpoint and supersedes the 2026-11-05 handoff below. **Night of 2026-11-08: the lab was resumed, repaired, and shut down cleanly again for a laptop power-off.** The evening resume exposed a root cause: Ubuntu netplan guests pin the NIC MAC from first boot, but the KubeVirt masquerade MAC changes with the launcher pod IP on every restart, leaving the guest with no IPv4 (`web-ubuntu-01` hung the fleet SSH wait with `dialing VM: dial tcp :22: connect: connection refused`). The live guest was repaired through the QEMU guest agent, both Ubuntu cloud-init builders now match the NIC by name, and the SSH wait heartbeat now prints the real error instead of `exit status 255`. **`netpol-client` still has the old MAC-pinned netplan on its disk and needs the one-time guest-agent repair in [scripts/README.md](../scripts/README.md#resume-after-an-interruption) on its next start.** At shutdown the three running guests (`rocky-desktop`, `web-ubuntu-01`, `db-rocky-01`) were stopped gracefully (all VMIs gone; `netpol-client` was already stopped) and `lab-k8s-01` completed a graceful `virsh shutdown` in about 100 seconds. No installation was in progress. Resume with `bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop`; reopen tunnels afterward and regenerate the Headlamp token (`bash scripts/45-monitoring-dashboard/dashboard-permissions.sh token`; the saved one expires after an hour).
 
 ### State at Handoff
 
@@ -34,8 +34,26 @@ This is the latest checkpoint and supersedes the 2026-11-05 handoff below. **End
 
 ### Resume Next Session
 
-1. After any laptop or outer-VM restart, run the one-command resumer from the repository root: `bash scripts/resume-lab.sh` (add `--start-vm --start-fleet --start-desktop` to also power things on). It handles the outer VM start, SSH wait, the guarded OVN route repair via the task 20 checker, pod crash-loop recovery, and prints the inventory and next commands. Dashboard tunnels never survive a restart; reopen them with `access-dashboards.sh --host` and `lab-switchboard/scripts/access.sh`, and regenerate the Headlamp token (1-hour lifetime).
-2. For deeper diagnosis use `bash scripts/check-lab-progress.sh` and the task 20 cluster checker directly.
+1. After any laptop or outer-VM restart, run the one-command resumer from the repository root (add `--start-vm --start-fleet --start-desktop` to also power things on). It handles the outer VM start, SSH wait, the guarded OVN route repair via the task 20 checker, pod crash-loop recovery, and prints the inventory and next commands.
+
+   ```sh
+   bash scripts/resume-lab.sh
+   ```
+
+   Dashboard tunnels never survive a restart; reopen them and regenerate the Headlamp token (1-hour lifetime).
+
+   ```sh
+   bash scripts/45-monitoring-dashboard/access-dashboards.sh --host
+   bash lab-switchboard/scripts/access.sh
+   ```
+
+2. For deeper diagnosis run the progress checker and the task 20 cluster checker directly.
+
+   ```sh
+   bash scripts/check-lab-progress.sh
+   bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
+   ```
+
 3. Scale additional test servers by adding entries to `scripts/34-vm-fleet/fleet.json` and re-running `--apply`; see the [task 34 guide](../scripts/34-vm-fleet/README.md).
 4. For the three-guest isolation matrix, Rocky 10 and Windows still need OS installation on this rebuilt lab (manual ISO path for Rocky; the repaired unattended generator for Windows remains unverified end to end).
 
@@ -74,10 +92,31 @@ Work is paused at the user's request. This is the latest checkpoint and supersed
 
 ### Resume Next Session
 
-1. Run `bash scripts/check-lab-progress.sh`, then `bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh`. Rediscover the outer VM address after a host restart; do not assume the address above is permanent. A completed stopped desktop VMI is not a running desktop session.
-2. When ready to work on the desktop, start only that VM: `KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml" work/virtctl-v1.9.1 start rocky-desktop -n rocky-desktop`. Wait for the VMI to be Running and ready. Do not recreate or reupload its disk to fix access.
-3. Independently verify the desktop host key through a trusted console or guest-agent path, then repair only the confirmed stale known-hosts entry and check the helper's effective SSH options. Retry `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --ssh` for the administrator shell.
-4. Run `bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --set-desktop-password` in the user's own terminal. Enter the new password there, never in chat. After a successful password update, run the `--vnc` helper and log in as `desktop`, or use the documented `--rdp` tunnel. Graphical login remains unverified until that succeeds.
+1. Run the progress checker, then the cluster health check. Rediscover the outer VM address after a host restart; do not assume the address above is permanent. A completed stopped desktop VMI is not a running desktop session.
+
+   ```sh
+   bash scripts/check-lab-progress.sh
+   bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
+   ```
+
+2. When ready to work on the desktop, start only that VM. Wait for the VMI to be Running and ready. Do not recreate or reupload its disk to fix access.
+
+   ```sh
+   KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml" work/virtctl-v1.9.1 start rocky-desktop -n rocky-desktop
+   ```
+
+3. Independently verify the desktop host key through a trusted console or guest-agent path, then repair only the confirmed stale known-hosts entry and check the helper's effective SSH options. Retry the administrator-shell helper.
+
+   ```sh
+   bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --ssh
+   ```
+
+4. Set the desktop password in the user's own terminal. Enter the new password there, never in chat. After a successful password update, run the `--vnc` helper and log in as `desktop`, or use the documented `--rdp` tunnel. Graphical login remains unverified until that succeeds.
+
+   ```sh
+   bash scripts/32-rocky-desktop/setup-rocky-desktop.sh --set-desktop-password
+   ```
+
 5. Continue [task 25](../scripts/25-prepare-guest-images/README.md) media verification and [task 30](../scripts/30-create-kubevirt-vms/README.md) test-guest provisioning separately. Reinstall optional dashboards only as an explicit follow-up, not as recovery of an existing deployment.
 
 After a laptop shutdown, assume GUI viewers and SSH/RDP tunnels have closed. Recheck VM states before reconnecting. Preserve the recreated desktop disk and generated host files; no further cleanup is needed to resume.
@@ -179,8 +218,19 @@ This file records dated evidence, not guaranteed live state. Run commands from t
 
 ### Expected Resume Steps
 
-1. Run `bash scripts/check-lab-progress.sh` and `bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh`. Do not run cleanup or reset before resuming.
-2. Resolve Ubuntu SSH/cloud-init before treating it as a usable test client. Inspect its console/cloud-init state; rerun `bash scripts/30-create-kubevirt-vms/setup-ubuntu-client.sh --verify` only after SSH is available. The interrupted verifier may be run again; it does not delete disks.
+1. Run the progress and cluster health checks. Do not run cleanup or reset before resuming.
+
+   ```sh
+   bash scripts/check-lab-progress.sh
+   bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
+   ```
+
+2. Resolve Ubuntu SSH/cloud-init before treating it as a usable test client. Inspect its console/cloud-init state; rerun the verifier only after SSH is available. The interrupted verifier may be run again; it does not delete disks.
+
+   ```sh
+   bash scripts/30-create-kubevirt-vms/setup-ubuntu-client.sh --verify
+   ```
+
 3. Configure the Rocky test service as described in [task 35](../scripts/35-verify-kubernetes-isolation/README.md). The task 30 VM exposes TCP 8080 and 8081; start listeners inside Rocky, then verify baseline requests from Ubuntu before applying policy.
 4. Only after baseline connectivity succeeds, apply the narrow default-deny and client/server allow policies described by task 35. Record actual allow/deny traffic results. Do not use the legacy `run-isolation-test.sh` against these installed VMs.
 5. Keep Windows stopped until its OS/account, drivers, and test service are verified. Test Windows in a separate run; the full matrix is not complete until then.
@@ -280,10 +330,24 @@ The long-lived policy design now lives in [microsegmentation-iac](../microsegmen
 ## Recovery Notes
 
 - During Ubuntu cloud-image setup, outer-guest SSH lost its address/default route due to the known OVN issue. The existing guarded runtime repair restored it; this is not a new persistent network fix. CDI also required an explicit `cdi.kubevirt.io/storage.bind.immediate.requested=true` annotation for an existing PVC upload. The new script sets this, safely retries only owned/inactive incomplete cloud disks, and tracks both local and remote upload forwarders for cleanup.
-- For missing SSH after a lease expires, use `scripts/20-install-k3s-kubevirt/repair-guest-network.sh --diagnose`; the cluster checker also attempts the guarded runtime repair. It is not persistent across reboot.
-- To expand the outer VM disk, use `bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh <total-size-gib>`. Do not run `qemu-img resize` against the active disk.
+- For missing SSH after a lease expires, run the network diagnoser; the cluster checker also attempts the guarded runtime repair. It is not persistent across reboot.
+
+  ```sh
+  bash scripts/20-install-k3s-kubevirt/repair-guest-network.sh --diagnose
+  ```
+
+- To expand the outer VM disk, use the resize helper. Do not run `qemu-img resize` against the active disk.
+
+  ```sh
+  bash scripts/10-create-lab-vm/resize-lab-vm-disk.sh <total-size-gib>
+  ```
+
 - Task 30 failures may leave PVCs, DataVolumes, VMs, or VMIs behind. The creator preserves persistent resources and only removes terminal failed VMIs after verifying ownership. Inspect the live state and follow the resume recommendation rather than deleting the namespace or rerunning cleanup blindly.
-- After each completed guest installation, use `bash scripts/30-create-kubevirt-vms/boot-installed-disk.sh <vm-name>` with the guest fully stopped. The helper refuses existing VMIs and unexpected ownership/configuration, preserves media and PVCs, and leaves the guest stopped for an explicit start. Use `--dry-run` to preview without changing resources.
+- After each completed guest installation, boot the installed disk with the guest fully stopped. The helper refuses existing VMIs and unexpected ownership/configuration, preserves media and PVCs, and leaves the guest stopped for an explicit start. Use `--dry-run` to preview without changing resources.
+
+  ```sh
+  bash scripts/30-create-kubevirt-vms/boot-installed-disk.sh <vm-name>
+  ```
 
 Current time is 21 Oct 10:47 PM
 

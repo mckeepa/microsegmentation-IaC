@@ -140,8 +140,10 @@ if [[ "$mode" == --apply ]]; then
       {hostname:.hostname,manage_etc_hosts:true,timezone:.timezone,disable_root:true,ssh_pwauth:false,
       users:[{name:.adminUser,groups:["adm","sudo"],shell:"/bin/bash",lock_passwd:true,sudo:["ALL=(ALL) NOPASSWD:ALL"],ssh_authorized_keys:[$key]}],
       package_update:true,packages:["qemu-guest-agent","openssh-server","curl","ca-certificates"],
-      write_files:[{path:"/etc/ssh/sshd_config.d/00-microsegmentation-lab.conf",owner:"root:root",permissions:"0644",content:"PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n"}],
-      runcmd:[["systemctl","enable","--now","qemu-guest-agent"],["sshd","-t"],["systemctl","reload","ssh"]]}
+      write_files:[{path:"/etc/ssh/sshd_config.d/00-microsegmentation-lab.conf",owner:"root:root",permissions:"0644",content:"PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n"},
+       {path:"/etc/cloud/cloud.cfg.d/99-microsegmentation-lab-network.cfg",owner:"root:root",permissions:"0644",content:"# KubeVirt masquerade NICs get a MAC derived from the launcher pod IP, which\n# changes on every VM restart; cloud-init must not render a MAC-pinned config.\nnetwork: {config: disabled}\n"},
+       {path:"/etc/netplan/90-microsegmentation-lab.yaml",owner:"root:root",permissions:"0600",content:"# Match the NIC by name, never by MAC: the KubeVirt masquerade MAC changes on\n# every restart.\nnetwork:\n  version: 2\n  ethernets:\n    lab-nic:\n      match: {name: \"en*\"}\n      dhcp4: true\n      dhcp6: true\n"}],
+      runcmd:[["systemctl","enable","--now","qemu-guest-agent"],["rm","-f","/etc/netplan/50-cloud-init.yaml"],["sshd","-t"],["systemctl","reload","ssh"]]}
     ' "$config_path")
     printf -v user_data '#cloud-config\n%s\n' "$user_data"
     patch=$(jq -cn --argjson vm "$vm_json" --slurpfile config "$config_path" --arg userdata "$user_data" '

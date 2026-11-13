@@ -29,6 +29,30 @@
       "runState": "running",
       "owner": "paul",
       "purpose": "Baseline database target for microsegmentation policy tests"
+    },
+    {
+      "name": "desktop-ubuntu-01",
+      "blueprint": "ubuntu-desktop",
+      "cpu": 4,
+      "memory": "6Gi",
+      "disk": "30Gi",
+      "labels": { "app": "desktop", "tier": "client", "env": "test", "os": "ubuntu" },
+      "runState": "stopped",
+      "waitSeconds": 2400,
+      "owner": "paul",
+      "purpose": "Ubuntu GNOME desktop client for interactive microsegmentation tests"
+    },
+    {
+      "name": "desktop-rocky-01",
+      "blueprint": "rocky-desktop",
+      "cpu": 4,
+      "memory": "6Gi",
+      "disk": "30Gi",
+      "labels": { "app": "desktop", "tier": "client", "env": "test", "os": "rocky" },
+      "runState": "stopped",
+      "waitSeconds": 2400,
+      "owner": "paul",
+      "purpose": "Rocky XFCE desktop client for interactive microsegmentation tests"
     }
   ]
 }

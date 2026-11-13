@@ -64,7 +64,7 @@ Fleet VMs have **no password by default** and need none for SSH. `--set-password
 
 Every fleet blueprint installs **Cockpit** bound to the guest's loopback only (`127.0.0.1:9090`, enforced by a systemd socket drop-in); it is never pod-network reachable because `9090` must not be added to `ports`. Open it per VM with `--cockpit <name>`, which prints a local `https://127.0.0.1:1909x` URL and keeps an SSH tunnel open (Ctrl+C closes it without stopping the VM). Log in as `labadmin` with the password from `--set-password`. The browser shows a self-signed-certificate warning on first use, like the outer VM's Cockpit.
 
-Fleet VMs are **headless servers**: they have no desktop environment and no RDP or VNC service, so `--ssh <name>` is the only interactive access. For a graphical desktop with tunneled RDP, use the separate [task 32 Rocky desktop](../32-rocky-desktop/README.md); its quick start covers starting the VM, setting the password, opening the tunnel, and connecting (including from another machine on the network).
+Fleet VMs are **headless servers**: they have no desktop environment and no RDP or VNC service, so `--ssh <name>` is the only interactive access. For a graphical desktop with tunneled RDP, use the separate [task 32 Rocky desktop](../32-rocky-desktop/README.md) or [task 33 Ubuntu GNOME desktop](../33-ubuntu-desktop/README.md); their quick starts cover starting the VM, setting the password, opening the tunnel, and connecting (including from another machine on the network), and `scripts/start-desktops.sh` starts both with one command.
 
 ## Safety Rules
 
