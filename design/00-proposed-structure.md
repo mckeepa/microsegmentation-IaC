@@ -42,7 +42,7 @@ functions as the CLI) — not a separate app with duplicated logic (FR-5.1).
 One file declares the whole lab; `lab vm apply` reconciles it (FR-2.1/2.2):
 
 ```yaml
-outer_vm: {name: lab2-k8s, vcpus: 8, memory_gib: 24, disk_gib: 130}
+outer_vm: {name: lab2-20261114-k8s, vcpus: 8, memory_gib: 32, disk_gib: 150}
 vms:
   - name: web-01
     blueprint: ubuntu-server
@@ -85,9 +85,10 @@ blueprint folder, not a new script.
    `mypy` + `pytest` as the one-command check (NFR-2.2). Talk to Kubernetes
    via the official `kubernetes` client where practical; shell out to
    `virsh`/`virtctl` behind thin, tested wrappers where the API is impractical.
-3. **New names, clean coexistence:** v2 resources use distinct names
-   (e.g. outer VM `lab2-k8s`) and their own ownership marker so the v1 lab can
-   keep running until teardown (constraints doc).
+3. **New names, clean break:** v2 resources use distinct names (outer VM
+   `lab2-20261114-k8s`) and their own ownership marker
+   (`microsegmentation-iac-v2-<name>`); the v1 lab was torn down before
+   provisioning (constraints doc).
 4. **Reconcile, don't script:** every mutation flows through
    lab.yaml → desired state → diff → guarded apply. No imperative per-VM
    scripts, ever — that is the v1 failure mode.

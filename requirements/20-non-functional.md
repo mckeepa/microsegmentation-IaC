@@ -40,9 +40,9 @@
 
 ## NFR-5 Resource fit
 
-- **NFR-5.1** Everything runs on one laptop: outer VM budget ≈ 8 vCPU / 24 GiB
-  RAM / 130 GiB disk. `lab status` warns before capacity is exceeded; VM
-  definitions declare their footprint so totals are checkable.
+- **NFR-5.1** Everything runs on one laptop. The outer VM budget is declared in
+  `lab.yaml` (single source of truth). `lab status` warns before capacity is
+  exceeded; VM definitions declare their footprint so totals are checkable.
 
 ## NFR-6 Audit logging
 

@@ -1,0 +1,30 @@
+# The declarative lab definition (FR-2.1). `lab provision` builds the outer
+# VM and cluster from `outer_vm`; `lab vm apply` reconciles `vms`.
+outer_vm:
+  name: lab2-20261114-k8s
+  os: ubuntu-24.04
+  vcpus: 8
+  memory_gib: 32
+  disk_gib: 150
+  network: default   # libvirt NAT
+  user: labadmin
+
+vms:
+  - name: web-01
+    blueprint: ubuntu-server
+    size: {vcpus: 2, memory_gib: 2, disk_gib: 10}
+    segment: web
+    ports: [22, 8080]
+    run: true
+  - name: db-01
+    blueprint: rocky-server
+    size: {vcpus: 2, memory_gib: 2, disk_gib: 10}
+    segment: db
+    ports: [22, 5432]
+    run: true
+  - name: desk-01
+    blueprint: rocky-desktop
+    size: {vcpus: 2, memory_gib: 4, disk_gib: 20}
+    segment: mgmt
+    ports: [22, 3389]
+    run: false

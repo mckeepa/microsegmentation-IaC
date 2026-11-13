@@ -28,13 +28,12 @@ cluster — never switch in place.
 
 ## Existing lab
 
-- The v1 lab (`lab-k8s-01` outer VM and its nested guests) keeps running from
-  `main` until v2 phase 2 is usable; then it is torn down and rebuilt with v2
-  tooling. v2 must not adopt or mutate v1-created resources.
+- The v1 lab was torn down on 2026-11-14 (outer VM `lab-k8s-01` undefined, its
+  disk and pinned DHCP host entry removed, v1 `work/` deleted). `main` retains
+  the v1 code for reference. v2 starts clean: the outer VM is
+  `lab2-20261114-k8s` (8 vCPU / 32 GiB / 150 GiB thin), declared in `lab.yaml`.
 - v2 keeps its runtime state in gitignored `state/` (`state/secrets/` for key
-  material, `state/cache/` for images). v1's `work/` remains on disk and
-  gitignored; v2 may seed `state/cache/` from its cached ISOs/images (checksum
-  verified) but must generate its own keys and state under distinct names.
+  material, `state/cache/` for images, `state/logs/` for the audit log).
 
 ## Non-negotiable ground rules (carried from v1)
 
