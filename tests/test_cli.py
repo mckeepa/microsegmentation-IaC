@@ -15,7 +15,7 @@ def test_help_lists_full_command_surface() -> None:
 
 
 def test_unimplemented_command_names_its_phase() -> None:
-    result = runner.invoke(app, ["status"])
+    result = runner.invoke(app, ["up"])
     assert result.exit_code == NOT_IMPLEMENTED_EXIT_CODE
     assert "phase 1" in result.output
 

@@ -35,7 +35,15 @@ def _todo(phase: int) -> None:
 @app.command()
 def status() -> None:
     """Report host, outer VM, cluster, and per-VM health with a NEXT: hint (FR-1.3)."""
-    _todo(1)
+    from lab import cluster
+    from lab.config import ConfigError, load_config
+
+    try:
+        lab_config = load_config()
+        raise typer.Exit(cluster.status(lab_config.outer_vm))
+    except ConfigError as error:
+        typer.secho(f"Error: {error}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -51,17 +59,19 @@ def provision(
     ] = False,
 ) -> None:
     """Provision the outer VM and the K3s/Cilium/KubeVirt/CDI stack (FR-1.1, FR-1.2)."""
-    from lab import host
+    from lab import cluster, host
     from lab.config import ConfigError, load_config
 
     try:
         lab_config = load_config()
         host.provision_outer_vm(lab_config.outer_vm, dry_run=dry_run)
+        if not dry_run:
+            cluster.provision_cluster(lab_config.outer_vm)
     except (ConfigError, host.ProvisionError) as error:
         typer.secho(f"Error: {error}", err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from None
     if not dry_run:
-        typer.echo("NEXT: cluster install (K3s/Cilium/KubeVirt) - not implemented yet (phase 1).")
+        typer.echo("NEXT: run `lab status` to verify, then define VMs in lab.yaml (phase 2).")
 
 
 @app.command()

@@ -9,6 +9,7 @@ under state/ instead of work/.
 
 import hashlib
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -281,6 +282,23 @@ def ssh_options(vm: OuterVM) -> list[str]:
         "-o",
         f"UserKnownHostsFile={known_hosts}",
     ]
+
+
+def ssh_run(
+    vm: OuterVM,
+    ip: str,
+    command: str,
+    description: str,
+    check: bool = True,
+    timeout: float | None = 300,
+) -> "subprocess.CompletedProcess[str]":
+    """Run one shell command on the outer VM over SSH (audit-logged, NFR-6)."""
+    return run(
+        ["ssh", *ssh_options(vm), f"{vm.user}@{ip}", command],
+        description=description,
+        check=check,
+        timeout=timeout,
+    )
 
 
 def wait_for_ssh(vm: OuterVM, timeout_s: int = 2400) -> str:
