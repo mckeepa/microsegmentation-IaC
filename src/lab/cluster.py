@@ -66,8 +66,17 @@ class Cluster:
         description: str,
         check: bool = True,
         timeout: float | None = 300,
+        input_text: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        return ssh_run(self.vm, self.ip, command, description, check=check, timeout=timeout)
+        return ssh_run(
+            self.vm,
+            self.ip,
+            command,
+            description,
+            check=check,
+            timeout=timeout,
+            input_text=input_text,
+        )
 
     def wait_until(
         self, description: str, predicate: Callable[[], bool], timeout_s: int, interval_s: int = 10

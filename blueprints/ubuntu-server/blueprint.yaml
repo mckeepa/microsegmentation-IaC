@@ -1,0 +1,7 @@
+# Ubuntu 24.04 LTS server blueprint.
+# Pinned release build (NFR-2.3). The sha256 is recorded for verification even
+# though CDI imports directly from the URL inside the cluster.
+image_url: https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img
+image_sha256: 04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94
+os: ubuntu-24.04
+user: labadmin

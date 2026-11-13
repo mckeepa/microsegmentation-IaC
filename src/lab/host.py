@@ -291,6 +291,7 @@ def ssh_run(
     description: str,
     check: bool = True,
     timeout: float | None = 300,
+    input_text: str | None = None,
 ) -> "subprocess.CompletedProcess[str]":
     """Run one shell command on the outer VM over SSH (audit-logged, NFR-6)."""
     return run(
@@ -298,6 +299,7 @@ def ssh_run(
         description=description,
         check=check,
         timeout=timeout,
+        input_text=input_text,
     )
 
 
