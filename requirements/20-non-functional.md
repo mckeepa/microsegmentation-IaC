@@ -43,3 +43,16 @@
 - **NFR-5.1** Everything runs on one laptop: outer VM budget ≈ 8 vCPU / 24 GiB
   RAM / 130 GiB disk. `lab status` warns before capacity is exceeded; VM
   definitions declare their footprint so totals are checkable.
+
+## NFR-6 Audit logging
+
+- **NFR-6.1** Every significant external action — virsh/virt-install and any
+  other outer-VM management, kubectl/helm/virtctl and any Kubernetes call, SSH
+  to the outer VM or guests, image downloads, and destructive file operations —
+  MUST be logged to an append-only log file under `state/logs/`.
+- **NFR-6.2** Each entry records a timestamp, the command (or API call) and its
+  target, the exit status/outcome, and duration. Secrets (keys, passwords,
+  tokens) are never written to the log.
+- **NFR-6.3** All external commands flow through one shared runner that
+  enforces NFR-6.1/6.2; code must not call subprocess APIs directly, so no
+  call can bypass the log.

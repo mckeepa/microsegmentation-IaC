@@ -20,6 +20,7 @@ folders, one entry point) inviolable.
 │   ├── images.py          #   download/verify/cache/CDI-upload guest images
 │   ├── access.py          #   SSH (virtctl tunnel), RDP tunnels, key mgmt
 │   ├── policy.py          #   apply policies, run flow test matrix
+│   ├── run.py             #   logged runner for ALL external commands (NFR-6)
 │   └── versions.py        #   every pinned version + checksum (NFR-2.3)
 ├── blueprints/            # per-variant VM templates (spec + cloud-init, jinja)
 │   ├── ubuntu-server/
@@ -29,7 +30,8 @@ folders, one entry point) inviolable.
 ├── tests/                 # pytest: unit tests + policy test definitions
 └── state/                 # gitignored local runtime state
     ├── secrets/           #   keys, known-hosts, kubeconfig, passwords, tunnel PIDs
-    └── cache/             #   checksum-verified downloaded images (ISOs, qcow2)
+    ├── cache/             #   checksum-verified downloaded images (ISOs, qcow2)
+    └── logs/              #   append-only audit log of every external command (NFR-6)
 ```
 
 Phase 4 adds `src/lab/web/` (switchboard, FastAPI serving the same core

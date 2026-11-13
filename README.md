@@ -25,7 +25,7 @@ make check         # format check + lint + types + tests (NFR-2.2)
 | [design/](design/) | Proposed repository structure and architecture for the solution |
 | [src/lab/](src/lab/) | The Python package behind the `lab` CLI — all logic lives here |
 | [tests/](tests/) | pytest suite, run via `make check` |
-| `state/` (gitignored) | Local runtime state — `state/secrets/` (keys, kubeconfig, passwords) and `state/cache/` (downloaded images) — never committed |
+| `state/` (gitignored) | Local runtime state — `state/secrets/` (keys, kubeconfig, passwords), `state/cache/` (downloaded images), `state/logs/` (audit log of every external command) — never committed |
 
 ## Status
 
