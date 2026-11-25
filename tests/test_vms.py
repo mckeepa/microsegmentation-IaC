@@ -1,10 +1,14 @@
 """VM reconciliation tests: blueprints, manifests, and guest access commands."""
 
+import json
+import shlex
 import subprocess
+from unittest.mock import Mock
 
 import pytest
 import yaml
 
+from lab import access
 from lab.access import guest_ssh_command
 from lab.config import OuterVM, Size, VMDef
 from lab.host import ProvisionError
@@ -116,3 +120,72 @@ def test_guest_ssh_jumps_via_outer_vm(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert "labadmin@192.168.122.57" in proxy
     assert "-W %h:%p" in proxy
     assert any("web-01_ed25519" in a for a in argv)
+
+
+@pytest.mark.parametrize(
+    ("blueprint", "package_command", "expected_os"),
+    [
+        ("ubuntu-server", "apt-get", "ubuntu"),
+        ("rocky-server", "dnf", "rocky"),
+        ("rocky-desktop", "dnf", "rocky"),
+    ],
+)
+def test_patch_uses_guest_package_manager_without_reboot(
+    monkeypatch: pytest.MonkeyPatch, blueprint: str, package_command: str, expected_os: str
+) -> None:
+    vm = VMDef(
+        name="guest", blueprint=blueprint, size=WEB.size, segment="web", ports=(22,), run=True
+    )
+    cluster = Mock()
+    cluster.ip = "192.0.2.1"
+    monkeypatch.setattr(
+        access, "_guest_address", lambda _cluster, _name, **_kwargs: ("10.0.0.1", "labadmin")
+    )
+    monkeypatch.setattr(access, "guest_ssh_command", lambda *_args: ["ssh", "labadmin@10.0.0.1"])
+    execute = Mock(return_value=subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(access, "run", execute)
+    assert access.patch_vm(cluster, vm) == 0
+    args = execute.call_args.args[0]
+    script = shlex.split(args[-1])[0]
+    assert f'"$ID" != {expected_os}' in script
+    assert script.index("cloud-init status --wait") < script.index(package_command)
+    assert "reboot\n" not in script
+    assert args[-5:-1] == ["sudo", "-n", "bash", "-c"]
+    assert "BatchMode=yes" in args
+    subprocess.run(["bash", "-n"], input=script, text=True, check=True)
+
+
+def test_patch_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    cluster = Mock()
+    cluster.ip = "192.0.2.1"
+    monkeypatch.setattr(
+        access, "_guest_address", lambda _cluster, _name, **_kwargs: ("10.0.0.1", "labadmin")
+    )
+    monkeypatch.setattr(access, "guest_ssh_command", lambda *_args: ["ssh", "labadmin@10.0.0.1"])
+    monkeypatch.setattr(access, "run", Mock(return_value=subprocess.CompletedProcess([], 23)))
+    assert access.patch_vm(cluster, WEB) == 23
+
+
+def test_patch_resolves_only_the_matching_managed_instance() -> None:
+    cluster = Mock()
+    instance = {
+        "metadata": {
+            "name": WEB.name,
+            "namespace": "other",
+            "labels": {"lab.local/blueprint": WEB.blueprint},
+        },
+        "status": {"phase": "Running", "interfaces": [{"ipAddress": "10.0.0.1"}]},
+    }
+    cluster.rsh.return_value.stdout = json.dumps({"items": [instance]})
+    with pytest.raises(ProvisionError, match="no running managed instance"):
+        access._guest_address(cluster, WEB.name, vm=WEB)
+    instance["metadata"]["namespace"] = WEB.segment
+    instance["metadata"]["labels"]["lab.local/blueprint"] = "rocky-server"
+    cluster.rsh.return_value.stdout = json.dumps({"items": [instance]})
+    with pytest.raises(ProvisionError, match="blueprint does not match"):
+        access._guest_address(cluster, WEB.name, vm=WEB)
+    instance["metadata"]["labels"]["lab.local/blueprint"] = WEB.blueprint
+    instance["status"]["phase"] = "Pending"
+    cluster.rsh.return_value.stdout = json.dumps({"items": [instance]})
+    with pytest.raises(ProvisionError, match="not running"):
+        access._guest_address(cluster, WEB.name, vm=WEB)

@@ -16,8 +16,9 @@
   step that installs Python/uv itself).
 - **NFR-2.2** Lint + type-check + unit tests run with one command and pass in CI
   (even if "CI" is just a pre-commit hook initially).
-- **NFR-2.3** Pin every external version (K3s, KubeVirt, CDI, CNI, images) in
-  one place, with checksums for downloads.
+- **NFR-2.3** Pin external versions (K3s, KubeVirt, CDI, CNI and base images)
+  in one place, with checksums for downloads. When `latest` selects a built
+  image, record its resolved immutable version and checksum for each VM.
 
 ## NFR-3 Safety and idempotency
 

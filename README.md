@@ -25,6 +25,18 @@ Cilium, KubeVirt and CDI. If it reports a failure, follow its `NEXT:` message
 before proceeding. This check does not verify every service inside every
 guest.
 
+Image-building tools are optional and checked separately. To install or update
+`libguestfs-tools`, `qemu-utils` and `isc-dhcp-client` **inside the outer VM**:
+
+```sh
+uv run lab status --install-image-tools
+```
+
+This installs Ubuntu packages and their dependencies using sudo; it does not
+update the laptop or guest VMs. It requires network access and can take several
+minutes. A normal `lab status` only checks these tools and does not install
+anything. The local image registry is not yet available.
+
 For a fuller Kubernetes pod check, run the following **on the laptop**, from
 the repository root. It discovers the outer VM's current IP and runs `k3s`
 inside that VM over SSH. Do not run `sudo k3s` directly on the laptop.
@@ -66,6 +78,104 @@ uv run lab vm list
 
 For command help, use `uv run lab --help` or `uv run lab vm --help`.
 For development checks, run `make check`.
+
+### Save work and shut down
+
+Run these commands from the laptop, in the repository root:
+
+1. Save open files in each guest and finish database transactions or other
+   application work. Stopping a VM is not a backup or snapshot.
+2. List the guests and stop each one that is running. For example:
+
+   ```sh
+   uv run lab vm list
+   uv run lab vm stop web-01
+   uv run lab vm stop db-01
+   uv run lab vm stop ubuntu-desktop
+   uv run lab vm list
+   ```
+
+   Replace the example names with the running guests shown by `lab vm list`.
+   Repeat the list command and wait until all guests you stopped show
+   `Stopped` before proceeding. Use `lab vm stop`, rather than shutting down
+   inside a guest: a VM configured to run may otherwise restart.
+3. Shut down the outer VM and wait for `shut off` before shutting down the
+   laptop. Replace the name if `outer_vm.name` in [lab.yaml](lab.yaml) differs:
+
+   ```sh
+   virsh -c qemu:///system shutdown lab2-20261114-k8s
+   virsh -c qemu:///system domstate lab2-20261114-k8s
+   ```
+
+   If it does not shut off, investigate rather than forcing it off. These
+   direct `virsh` commands do not go through the lab audit logger.
+
+To resume later, run `uv run lab up --start-vm`, then use `uv run lab vm
+start <name>` for each guest you want running. `lab up` does not start guests
+that were explicitly stopped. A later `lab vm apply` resets each VM's run
+state to the value in [lab.yaml](lab.yaml); review those values first.
+
+### Verify a guest image
+
+To download a blueprint's image into `state/cache/` and verify its SHA-256:
+
+```sh
+uv run lab image fetch ubuntu-desktop  # replace with a blueprint name
+```
+
+The cache is verified again on reuse. **This does not yet change VM
+provisioning:** `lab vm apply` still imports independently from the URL
+through CDI, so its downloads are not checksum-verified.
+
+### Patch an existing guest
+
+For a running Ubuntu 24.04, Rocky 9 or Rocky 10 guest, from the laptop:
+
+```sh
+uv run lab vm patch db-01
+```
+
+This waits for cloud-init, updates guest packages over SSH and does not
+reboot or replace the disk. Package updates can restart services; back up
+important data and choose a suitable maintenance window first. Ubuntu reports
+if `/run/reboot-required` exists; on Rocky, check reboot requirements separately.
+Restart the VM explicitly when appropriate. This does not update the base image
+or other VMs.
+
+### Test the experimental image builder
+
+The first builder stage supports **ubuntu-server only**. It creates private,
+timestamped QCOW2 files in the outer VM, not container images. It does not
+publish to a registry or change `lab vm apply`; the results have not yet been
+tested through KubeVirt and should not be used for production VMs. A disposable
+QEMU boot and cloud-init test passed for the Ubuntu server base and patched
+disk. The separate CDI import checksum issue described above remains open.
+
+On the laptop, from the repository root:
+
+```sh
+uv run lab status --install-image-tools
+uv run lab image build-base ubuntu-server
+uv run lab image list ubuntu-server
+uv run lab image verify ubuntu-server base
+uv run lab image patch ubuntu-server
+uv run lab image list ubuntu-server
+uv run lab image verify ubuntu-server latest
+# Verify a previous version using its timestamp printed by the list command:
+uv run lab image verify ubuntu-server 20261125T120117656855Z
+```
+
+Replace the example timestamp with one from your own list. The base build
+checks the pinned download, expands a copy to 10 GiB, installs the guest agent
+and SSH server, updates packages and removes instance-specific data. Patching
+copies and updates that base; it does not modify the base or existing VMs.
+Both steps verify the new disk and record its SHA-256 and source in a manifest.
+Each successful build advances the local `latest` pointer; rebuilding the
+base also advances `base`. Old versions remain on the outer VM and consume
+disk space. Builds require network access, nested KVM, and several GiB of free
+space; they can take several minutes. If a build is interrupted or loses its
+SSH connection, it can leave a workspace and build lock. Inspect the outer VM
+and confirm no build is still running before removing either.
 
 ## Where to start
 

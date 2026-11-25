@@ -1,17 +1,50 @@
 # Implementation Checkpoint — 2026-11-14
 
+## Guest image verification — in progress
+
+- `lab image fetch <blueprint>` downloads and SHA-256-verifies an image in the
+  local cache and verifies cached files again on reuse.
+- **Still pending:** make CDI import those verified bytes. `lab vm apply`
+  currently downloads independently inside the cluster and is not verified;
+  running `lab image fetch` does not change that. Existing VM disks have not
+  been modified.
+- The installed CDI supports HTTP source checksums, but a server-side dry run
+  confirmed the installed KubeVirt VM template rejects the checksum field.
+  A safe implementation must use a supported import path and preserve existing
+  disks rather than adding the field to the existing VM template.
+
 ## VM image build requirements — 2026-11-25
 
-- **Pending (FR-2.7):** Add an image-building tool or workflow to preinstall
-  desktop software and updates in reusable, versioned VM images, so new VMs
-  start more quickly. Keep instance-specific settings and secrets out of the
-  image; configure them when each VM is created.
-- **Pending (FR-2.8):** Allow a prebuilt image to be patched and saved as a new
-  version for future VMs. Patching an image does not patch existing VM disks;
-  never replace those disks silently.
-- When implementing the workflow, include instructions for building,
-  patching, verifying and using image versions, and for patching existing VMs
-  separately. The tool and workflow have not yet been implemented.
+- `lab vm patch <name>` updates packages on an existing running Ubuntu 24.04,
+  Rocky 9 or Rocky 10 guest over SSH, without rebooting or replacing its disk.
+  The user reports that patching a running VM is working.
+- **Pending (FR-2.7–2.10):** Build a reusable base image with the software
+  needed for each VM variant, then create patched images from that base.
+  Give each successful build an immutable date-and-time version and keep
+  previous versions. `latest` selects the most recent verified build; lab
+  configuration can instead select an earlier timestamped version.
+- The user selected container images in a local registry, with the build
+  workflow running in the outer lab VM. Patching must update the guest disk,
+  not merely the container filesystem. The registry does not yet exist.
+- The outer VM has guestfs, qemu-utils and isc-dhcp-client installed. `lab
+  status` checks these optional tools; `lab status --install-image-tools`
+  installs or updates them in the outer VM.
+- An experimental `ubuntu-server` disk builder creates a timestamped base and
+  patched copy, local base/latest pointers and SHA-256 provenance. A disposable
+  boot test found the initial resize strategy renumbered partitions and broke
+  GRUB; those invalid test images were removed. The corrected strategy preserves
+  partition numbers. Both the corrected base and patched image booted and
+  completed cloud-init in disposable QEMU tests; KubeVirt provisioning has not
+  been tested.
+- **Still pending:** desktop and Rocky builds, publishing disk images as OCI
+  images to the local registry, version selection for new VMs and safe
+  checksum-verified CDI provisioning. These local disks are not selectable by
+  `lab vm apply`.
+- Record each new VM's resolved image version and checksum. Keep secrets and
+  instance-specific settings out of images. Selecting a different image does
+  not patch or silently replace existing VM disks.
+- Instructions for the experimental local build and patch commands are in the
+  README. Registry publishing and VM image selection instructions remain pending.
 
 ## Switchboard requirement — 2026-11-25
 
@@ -36,8 +69,11 @@ outer VM was shut down.
 
 ```sh
 uv run lab up --start-vm   # starts the outer VM, waits for SSH + pod recovery, prints health
-uv run lab vm list         # web-01 and db-01 should return to Running/Ready
+uv run lab vm list         # inspect guest states
 ```
+
+VMs explicitly stopped before shutdown remain stopped; start each desired
+guest with `uv run lab vm start <name>`. See the README's shutdown procedure.
 
 If anything fails, `lab status` ends with a `NEXT:` hint.
 
