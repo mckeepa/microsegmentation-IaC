@@ -10,7 +10,7 @@ runner = CliRunner()
 def test_help_lists_full_command_surface() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("status", "up", "provision", "ssh", "rdp", "vm", "policy", "web"):
+    for command in ("status", "up", "provision", "ssh", "rdp", "vm", "image", "policy", "web"):
         assert command in result.output
 
 
@@ -41,3 +41,9 @@ def test_vm_subcommands_registered() -> None:
     assert result.exit_code == 0
     for command in ("apply", "list", "start", "stop", "delete", "console", "set-password"):
         assert command in result.output
+
+
+def test_image_fetch_rejects_unknown_blueprint() -> None:
+    result = runner.invoke(app, ["image", "fetch", "no-such-blueprint"])
+    assert result.exit_code == 1
+    assert "unknown blueprint" in result.output

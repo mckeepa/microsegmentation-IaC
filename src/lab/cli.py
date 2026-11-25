@@ -26,10 +26,12 @@ app = typer.Typer(
     ),
 )
 vm_app = typer.Typer(no_args_is_help=True, help="Declarative VM lifecycle (phase 2).")
+image_app = typer.Typer(no_args_is_help=True, help="Guest image cache.")
 policy_app = typer.Typer(
     no_args_is_help=True, help="Microsegmentation policies and tests (phase 3)."
 )
 app.add_typer(vm_app, name="vm")
+app.add_typer(image_app, name="image")
 app.add_typer(policy_app, name="policy")
 
 NOT_IMPLEMENTED_EXIT_CODE = 3
@@ -165,6 +167,17 @@ def rdp(
 def web() -> None:
     """Run the local switchboard web UI (FR-5)."""
     _todo(4)
+
+
+@image_app.command("fetch")
+def image_fetch(blueprint_name: str) -> None:
+    """Download and checksum-verify a blueprint's guest image."""
+    from lab.images import fetch_image
+    from lab.vms import load_blueprint
+
+    with _vm_errors():
+        blueprint = load_blueprint(blueprint_name)
+        fetch_image(blueprint.image_url, blueprint.image_sha256)
 
 
 @vm_app.command("apply")

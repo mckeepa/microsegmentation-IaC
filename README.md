@@ -67,6 +67,18 @@ uv run lab vm list
 For command help, use `uv run lab --help` or `uv run lab vm --help`.
 For development checks, run `make check`.
 
+### Verify a guest image
+
+To download a blueprint's image into `state/cache/` and verify its SHA-256:
+
+```sh
+uv run lab image fetch ubuntu-desktop  # replace with a blueprint name
+```
+
+The cache is verified again on reuse. **This does not yet change VM
+provisioning:** `lab vm apply` still imports independently from the URL
+through CDI, so its downloads are not checksum-verified.
+
 ## Where to start
 
 | Folder | Contents |

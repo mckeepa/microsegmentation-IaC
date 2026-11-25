@@ -34,14 +34,24 @@ IDs are stable; reference them in design docs, commits, and tests.
   console <name>` opens the serial/VNC console for boot debugging.
 - **FR-2.6** Guest images are downloaded once, checksum-verified, and cached in
   `state/cache/`.
-- **FR-2.7** Provide an image-building workflow that preinstalls desktop
-  software and updates in reusable, versioned VM images, reducing first-boot
-  setup time. New VMs must still receive their own hostname, SSH keys and
-  other instance-specific configuration; images must not contain lab secrets.
-- **FR-2.8** Support patching a prebuilt image to produce a new version for
-  future VMs. Never silently replace existing VM disks. Document how to build,
-  patch, verify and use image versions, and explain how existing VMs are
-  patched separately.
+- **FR-2.7** Provide an image-building workflow with a reusable base image for
+  each supported VM variant. The base preinstalls the OS, desktop where
+  applicable, access services and other required software to reduce
+  first-boot setup time. New VMs must still receive their own hostname, SSH
+  keys and other instance-specific configuration; images must not contain lab
+  secrets.
+- **FR-2.8** Build patched images from a prebuilt base, assigning each
+  successful build a unique, immutable date-and-time version. Retain previous
+  versions and provide a `latest` alias for the most recent successful,
+  verified build.
+- **FR-2.9** Allow lab configuration to select `latest` or a specific
+  date-and-time image version for new VMs, so an earlier version can be
+  selected if a build has problems. Record the resolved version and checksum
+  used for each VM. Changing the selection must not silently replace existing
+  VM disks or patch existing VMs.
+- **FR-2.10** Document how to build a base image, create a patched version,
+  verify it, select `latest` or an earlier version, and patch existing VMs
+  separately.
 
 ## FR-3 Access (phase 2)
 
