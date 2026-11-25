@@ -1,112 +1,243 @@
-# KVM Microsegmentation Lab
+# KubeVirt Home Lab — v2
 
-This project plans and validates a policy-as-code approach to network microsegmentation across VMware NSX, Kubernetes workloads, and Azure Virtual Networks (VNets) with Network Security Groups (NSGs). The first milestone is a small K3s and KubeVirt proof of concept on the existing QEMU/KVM host. OpenShift Virtualization is the preferred longer-term Kubernetes target. NSX and Azure are separate infrastructure backends driven from shared policy intent, not from identical platform resources.
+A restart of the microsegmentation lab on a clean branch. The old implementation
+lives on `main` for reference. The v1 outer VM was removed during the restart;
+v2 uses a separate outer VM.
 
-The project is intended to test how workload identity, default-deny policy, explicitly allowed traffic, policy delivery, and validation can be managed consistently. Kubernetes isolation is the primary runtime proof of concept; NSX and Azure implementations also require provider/static checks and platform-specific validation. The project does not claim that the three policy engines behave identically.
+**Goal in one line:** declaratively run VMs (with and without desktops) on
+Kubernetes/KubeVirt, and get an SSH or RDP session to any of them in one command.
 
-## Project Status
+## Run the lab
 
-The single-node K3s/OVN-Kubernetes/KubeVirt/CDI lab is deployed. Rocky Linux 10 and the Ubuntu client have verified key-based administration; Ubuntu provisioning is unattended and JSON-configured. A separate Rocky 9 desktop provides Firefox and tunneled RDP, and task 45 provides optional monitoring dashboards. Windows installation and isolation testing remain pending. Azure and NSX adapters are planned, not deployed or runtime-verified.
+Run these commands from the **repository root on the laptop**, not inside a
+guest VM. Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
-For the current implementation checkpoint, see [Implementation status](doco/IMPLEMENTATION-STATUS.md).
-
-## Before Running Scripts
-
-Do not clean or reset the lab before routine runs. The task scripts are designed to inspect and resume project-owned resources; use the progress checker and follow its `NEXT:` recommendation. A full reset is a separate destructive action: [`cleanup-lab.sh`](scripts/90-cleanup/README.md) permanently deletes the outer VM disk, cluster, and all nested guest disks. Use it only when intentionally rebuilding from task 10, after backing up anything you need.
-
-## Resume After an Interruption
-
-After a power loss, laptop restart, or break, run the one-command resumer from the repository root on the QEMU/KVM host:
+### 1. Start and check the lab
 
 ```sh
-bash scripts/resume-lab.sh                                   # checks only; prompts before starting the outer VM
-bash scripts/resume-lab.sh --start-vm --start-fleet --start-desktop   # full restart of VM, fleet guests, and desktop
+uv sync                      # install dependencies into .venv
+uv run lab up --start-vm     # start the outer VM and wait for recovery
+uv run lab status            # check the outer VM and cluster
 ```
 
-It starts the outer VM (with approval), waits for SSH, runs the cluster health check with the guarded OVN route repair, waits out any pod crash-loop recovery, prints the VM inventory with access methods, optionally reconciles fleet VMs and starts the desktop, and ends with the dashboard-tunnel and access commands. Afterward, reopen the dashboard tunnels and generate a fresh Headlamp token per [Dashboard Quick Access](#dashboard-quick-access) — tunnels and tokens never survive a restart. The microsegmentation next steps are in the [implementation status checkpoint](doco/IMPLEMENTATION-STATUS.md). For deeper diagnosis:
+Check that `lab status` reports `OK` for the outer VM, K3s, the node,
+Cilium, KubeVirt and CDI. If it reports a failure, follow its `NEXT:` message
+before proceeding. This check does not verify every service inside every
+guest.
 
-1. Read the checkpoint in [doco/IMPLEMENTATION-STATUS.md](doco/IMPLEMENTATION-STATUS.md) for completed tasks, known blockers, and the resume order.
-2. Run the progress checker. It checks the host, outer VM, SSH, guest disk, cluster health, staged media, and task 30 resources, then prints one `NEXT:` recommendation:
-
-   ```sh
-   bash scripts/check-lab-progress.sh
-   ```
-
-   If the managed outer VM is powered off, the checker asks permission to start it, then waits for networking and SSH. It does not start nested guests. Exit code `0` means the inventory completed, not that every deployment stage passed; read the `WARN`, `BLOCKED`, and `NEXT:` lines.
-
-3. Follow the `NEXT:` step. The task guides in [scripts/README.md](scripts/README.md) cover troubleshooting and resizing the outer VM disk.
-4. Update the checkpoint file when a task completes or a new blocker is found.
-
-The task scripts preserve partial state and resume project-owned resources. Do not delete the `netpol-test` namespace or run cleanup to "start fresh" unless the checker or checkpoint says to.
-
-## Restart Test VMs and Verify Microsegmentation
-
-From the repository root on the physical QEMU/KVM host, resume the outer VM and check the lab state:
+For a fuller Kubernetes pod check, run the following **on the laptop**, from
+the repository root. It discovers the outer VM's current IP and runs `k3s`
+inside that VM over SSH. Do not run `sudo k3s` directly on the laptop.
 
 ```sh
-bash scripts/check-lab-progress.sh
-bash scripts/20-install-k3s-kubevirt/check-cluster-status.sh
+VM_NAME=lab2-20261114-k8s  # outer_vm.name in lab.yaml
+VM_IP=$(virsh -c qemu:///system domifaddr "$VM_NAME" --source lease |
+  awk '$3 == "ipv4" { split($4, a, "/"); print a[1]; exit }')
+if [ -n "$VM_IP" ]; then
+  ssh -i "state/secrets/${VM_NAME}_ed25519" -o IdentitiesOnly=yes \
+    -o "UserKnownHostsFile=state/secrets/${VM_NAME}_known_hosts" \
+    "labadmin@$VM_IP" 'sudo -n k3s kubectl get pods -A'
+else
+  echo "No DHCP address found; check the outer VM with uv run lab status." >&2
+fi
 ```
 
-The progress checker prompts before starting the outer VM if it is powered off. Once the cluster is healthy, start the installed test guests as needed:
+Check that long-running pods are `Running` and ready, and completed jobs are
+`Completed`. Investigate pods in error or crash-loop states. This direct SSH
+command does not go through the `lab` audit logger.
+
+### 2. List guest VMs
 
 ```sh
-export KUBECONFIG="$PWD/work/kubeconfig-lab-k8s-01.yaml"
-work/virtctl-v1.9.1 start netpol-server-rocky -n netpol-test
-work/virtctl-v1.9.1 start netpol-client -n netpol-test
+uv run lab vm list
 ```
 
-Keep `netpol-server-windows` powered off during the Rocky test; test Windows separately by starting it instead of Rocky. The guest start commands only start existing VMs and preserve their disks. Follow the [task 35 isolation test procedure](scripts/35-verify-kubernetes-isolation/README.md) to apply policies and verify allowed and denied connections. It is currently a manual test procedure, not an automated runner. **Do not run** `run-isolation-test.sh` for the installed task 30 guests: that legacy script creates its own namespace and VMs. See the [task 30 guide](scripts/30-create-kubevirt-vms/README.md) for guest setup and stop/start details.
+This lists project-managed KubeVirt VMs with their status, readiness, IP and
+ports. `Running` and `READY True` indicate that the VM is running and ready;
+they do not guarantee that its applications or desktop services are ready.
+VMs only defined in [lab.yaml](lab.yaml), but not yet created, will not appear.
 
-## Dashboard Quick Access
+To start an already-created VM that is stopped:
 
-With the two tunnel helpers running (`bash scripts/45-monitoring-dashboard/access-dashboards.sh --host` and `bash lab-switchboard/scripts/access.sh`), open:
+```sh
+uv run lab vm start desk-01  # replace desk-01 with the VM name
+uv run lab vm list
+```
 
-| Dashboard | URL | Login |
-| --- | --- | --- |
-| Lab Switchboard (VM control portal) | <http://localhost:18088> | password in `lab-switchboard/.local/admin-password` |
-| Headlamp (Kubernetes) | <http://localhost:18080> | short-lived token in `work/headlamp-token`; regenerate with `bash scripts/45-monitoring-dashboard/dashboard-permissions.sh token` |
-| Cockpit (outer `lab-k8s-01` VM OS) | <https://localhost:19090> | `cockpit-monitor` + password in `work/cockpit-monitor-password` |
-| Cockpit on a fleet VM (per-VM OS view) | printed by `bash scripts/34-vm-fleet/setup-vm-fleet.sh --cockpit <name>` | `labadmin` + password set with `--set-password <name>` |
+For command help, use `uv run lab --help` or `uv run lab vm --help`.
+For development checks, run `make check`.
 
-Tunnels are terminal/background processes, not boot services: reopen them after a reboot. Credential files are Git-ignored and never printed; read them privately. Details and troubleshooting: [monitoring inventory](doco/MONITORING.md), [dashboard runbook](scripts/45-monitoring-dashboard/README.md), and the [Switchboard guide](lab-switchboard/README.md).
+## Where to start
 
-## Documentation
+| Folder | Contents |
+| --- | --- |
+| [requirements/](requirements/) | What v2 must do, in what order, and what we learned from v1 |
+| [design/](design/) | Proposed repository structure and architecture for the solution |
+| [src/lab/](src/lab/) | The Python package behind the `lab` CLI — all logic lives here |
+| [tests/](tests/) | pytest suite, run via `make check` |
+| `state/` (gitignored) | Local runtime state — `state/secrets/` (keys, kubeconfig, passwords), `state/cache/` (downloaded images), `state/logs/` (audit log of every external command) — never committed |
 
-- [Lab Switchboard: containerized VM control and dashboard portal](lab-switchboard/README.md)
-- [Monitoring tools and dashboards: inventory and where each is accessed](doco/MONITORING.md)
-- [Install and open the monitoring dashboards (Cockpit and Headlamp)](scripts/45-monitoring-dashboard/README.md)
-- [VM access: list running VMs/protocols, SSH, and RDP](scripts/README.md#vm-access-ssh-and-rdp)
-- [Start or resume the lab: task guides](scripts/README.md)
-- [Documentation index](doco/README.md)
-- [Implementation status and resume checkpoint](doco/IMPLEMENTATION-STATUS.md)
-- [Architecture](doco/ARCHITECTURE.md)
-- [High-level design](doco/HIGH-LEVEL-DESIGN.md)
-- [Lab setup and prerequisites](doco/LAB-SETUP.md)
-- [Configuration, operation, and maintenance guide](doco/OPERATIONS-GUIDE.md)
-- [Project plan and open decisions](doco/PROJECT-PLAN.md)
-- [Task-by-task setup guides and scripts](scripts/README.md)
-- [Original source material](doco/orginal/)
+## Provision and access the outer VM
 
-## Intended Delivery Model
+```sh
+uv run lab provision   # idempotent: creates the outer VM from lab.yaml, or reports it
+```
 
-- A version-controlled policy definition is the shared source of intent, with platform-specific validation and outputs.
-- Argo CD is the proposed reconciler for Kubernetes resources.
-- Terraform with separate provider configurations and state manages Azure VNets/NSGs and NSX resources; NSX requires a supported, licensed, reachable environment.
-- A policy compiler/adapter must reject unsupported semantics rather than silently weakening a policy. Exact cross-platform equivalence is not assumed.
+SSH to the outer VM (`lab ssh` will wrap this in phase 2). Its IP is a DHCP
+lease that can change after any restart, so discover it — never hardcode it:
 
-## Current Constraints
+```sh
+VM_NAME=lab2-20261114-k8s   # outer_vm.name in lab.yaml
+VM_IP=$(virsh -c qemu:///system domifaddr "$VM_NAME" --source lease |
+  awk '$3 == "ipv4" { split($4, a, "/"); print a[1]; exit }')
+ssh -i "state/secrets/${VM_NAME}_ed25519" -o IdentitiesOnly=yes \
+  -o "UserKnownHostsFile=state/secrets/${VM_NAME}_known_hosts" \
+  "labadmin@$VM_IP"
+```
 
-- The host is QEMU/KVM-based and there is no VMware license, so NSX resources cannot currently be deployed or runtime-validated.
-- Azure deployment requires an Azure subscription, permissions, cost controls, and a selected region; these are not yet confirmed.
-- Upstream OVN-Kubernetes is installed and its pinned configuration has passed lab checks. This is not proof of OpenShift dataplane parity or network-policy enforcement; isolation tests are still pending. Flannel is a design fallback, not the deployed CNI.
-- Disk capacity currently exceeds the lab planning target; monitor free space as VM images and snapshots grow.
-- Local component versions and task-specific configuration are recorded in the task guides. Cross-platform policy contracts, cloud access, and production acceptance criteria still require decisions. Design proposals are not deployment instructions.
+Login is key-only (the key is generated into `state/secrets/` by `lab
+provision`); the account has passwordless sudo and no usable password.
 
-## Scope
+## Desktop RDP
 
-The initial scope is a single-node, disposable K3s/KubeVirt lab that demonstrates policy behavior, Git-based changes, and repeatable validation across Ubuntu, a RHEL-compatible Rocky Linux guest, and a Windows Server evaluation guest. The design includes independently generated NSX, Kubernetes, and Azure targets. High availability, production operations, migration tooling, and claims of behaviorally identical enforcement are out of scope.
+The VMs run under KubeVirt in Kubernetes pods; RDP connects to a **desktop
+guest VM**, not directly to a container. Only VMs with an `rdp` entry in
+[lab.yaml](lab.yaml) are selected.
 
-## Lab VM Plan
+**Current limitation:** the Ubuntu desktop has been accessed over RDP after
+manual fixes, but provisioning a fresh VM with the updated blueprint and
+restarting it have not yet been tested end-to-end. The existing VM importer
+downloads images directly through CDI without checking the blueprint's
+SHA-256; do not rely on that value as verification. A definition in
+`lab.yaml` alone does not create a VM.
 
-Use one outer QEMU/KVM guest for K3s and KubeVirt, then an Ubuntu client, Rocky Linux server, and Windows Server evaluation guest inside KubeVirt for isolation tests. The Rocky desktop is a standard lab guest but separate from this test matrix. See the [lab setup guide](doco/LAB-SETUP.md) and the [setup task guides](scripts/README.md). Do not create separate K3s control-plane and worker VMs for the initial proof of concept.
+### Ubuntu GNOME desktop
+
+The `ubuntu-desktop` definition uses Ubuntu 24.04 with the standard Ubuntu
+GNOME desktop and xrdp, 4 vCPUs, 8 GiB RAM, 40 GiB disk and local port
+`13390`. It starts with `run: false`; change that to `true` in
+[lab.yaml](lab.yaml) if it should also start automatically after later applies.
+
+**Before applying:** `lab vm apply` reconciles **every** VM in `lab.yaml`,
+including its `run` value. For example, it stops `desk-01` if that VM is
+running while its definition says `run: false`. Review the run states against
+`uv run lab vm list` and adjust them before applying. Ensure the outer VM has
+enough free CPU, memory and disk for the additional desktop.
+
+Run on the laptop, from the repository root:
+
+```sh
+uv run lab vm apply
+uv run lab vm start ubuntu-desktop
+uv run lab vm list
+```
+
+While the VM is `Provisioning`, check its image import progress from the
+laptop with this temporary troubleshooting command:
+
+```sh
+uv run python - <<'PY'
+from lab.cluster import Cluster
+from lab.config import load_config
+
+cluster = Cluster(load_config().outer_vm)
+result = cluster.rsh(
+    "sudo k3s kubectl get datavolume ubuntu-desktop-root -n mgmt -o wide",
+    "inspect Ubuntu desktop image import",
+)
+print(result.stdout, end="")
+PY
+```
+
+The `PROGRESS` column is the CDI image import percentage, not the progress of
+the entire desktop installation. This command uses the lab's audit-logged SSH
+runner. For another VM, replace the DataVolume name and namespace.
+
+Once the VM is running and has an IP, check first-boot installation:
+
+```sh
+uv run lab ssh ubuntu-desktop -- sudo cloud-init status --wait
+```
+
+Cloud-init does not report an overall completion percentage. To watch the
+installation while the command above is waiting, open a second laptop terminal
+in the repository root and run:
+
+```sh
+uv run lab ssh ubuntu-desktop -- sudo tail -n 0 -f /var/log/cloud-init-output.log
+```
+
+Press `Ctrl+C` to stop watching; installation continues. A percentage shown in
+the log applies to that individual download or operation, not the entire
+installation.
+
+Proceed only if cloud-init reports `status: done`. If it reports an error, use
+`uv run lab ssh ubuntu-desktop -- sudo cloud-init status --long` for details.
+During package installation, systemd may report that `colord`,
+`gnome-remote-desktop` or `speech-dispatcher` users do not yet exist. If
+cloud-init finishes successfully, check for incomplete packages with
+`uv run lab ssh ubuntu-desktop -- sudo dpkg --audit`; no output indicates no
+packages were reported by that check.
+Then set a password for the separate, initially locked `desktop` account and
+open its loopback tunnel:
+
+```sh
+uv run lab vm set-password ubuntu-desktop
+uv run lab rdp ubuntu-desktop
+xfreerdp /v:127.0.0.1:13390 /u:desktop /d: /cert:tofu /dynamic-resolution
+```
+
+For this desktop, FreeRDP 2.11.5 (`xfreerdp`, from `freerdp2-x11` on Ubuntu)
+was verified to resize dynamically. FreeRDP 3.32.2 (`xfreerdp3`) disconnected
+when resizing in this lab. With trust-on-first-use, verify the certificate
+fingerprint on first connection against the guest over SSH:
+
+```sh
+uv run lab ssh ubuntu-desktop -- sudo openssl x509 -in /etc/xrdp/cert.pem -noout -fingerprint -sha256
+```
+
+Select **Xorg** if the xrdp login screen asks for a session, and log in as
+`desktop` with the password you set. SSH remains key-only. Log out of the
+graphical console session before using RDP, or vice versa.
+
+### Rocky desktop and all-desktop tunnels
+
+Once an RDP-configured desktop VM has been created and is running, its desktop
+account needs a password. For `desk-01`, set it interactively on first use:
+
+```sh
+uv run lab vm set-password desk-01
+```
+
+Open loopback tunnels for all configured, running desktops, or just one:
+
+```sh
+uv run lab rdp --all
+# Or: uv run lab rdp desk-01
+```
+
+The command prints the local port and user for each tunnel. For the `desk-01`
+settings in [lab.yaml](lab.yaml), connect from the laptop with FreeRDP:
+
+```sh
+xfreerdp3 /v:127.0.0.1:13389 /u:desktop /d: /cert:tofu /dynamic-resolution
+```
+
+Use the printed port and user for other desktops. `--all` reports stopped or
+unreachable desktops without starting them and returns a nonzero status if any
+cannot be opened. Each desktop needs a unique `rdp.local_port`. Tunnels bind
+only to the laptop's loopback interface and must be reopened after a restart.
+
+## Status
+
+- [x] Phase 0 — requirements and structure defined (this branch)
+- [x] Phase 1 — foundation: outer VM + K3s + KubeVirt, one health command
+      (`lab provision`, `lab status`, `lab up`)
+- [ ] Phase 2 — VM lifecycle and SSH implemented; Ubuntu desktop and RDP
+      tunnels need end-to-end validation
+- [ ] Phase 3 — microsegmentation: NetworkPolicy test harness on guest traffic
+- [ ] Phase 4 — switchboard: web UI for status and tasks, reusing the same core
+
+See [STATUS.md](STATUS.md) for the latest implementation checkpoint and resume
+steps, [requirements/00-vision.md](requirements/00-vision.md) for scope and
+[design/00-proposed-structure.md](design/00-proposed-structure.md) for the plan.

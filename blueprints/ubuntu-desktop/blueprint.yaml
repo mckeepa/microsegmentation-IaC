@@ -1,0 +1,6 @@
+# The same pinned Ubuntu 24.04 cloud image as ubuntu-server.
+# CDI currently imports the image without verifying this checksum.
+image_url: https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img
+image_sha256: 04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94
+os: ubuntu-24.04
+user: labadmin

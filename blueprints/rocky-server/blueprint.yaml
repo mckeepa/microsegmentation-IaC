@@ -1,0 +1,7 @@
+# Rocky Linux 10 server blueprint.
+# Pinned GenericCloud build (NFR-2.3). The sha256 is recorded for verification
+# even though CDI imports directly from the URL inside the cluster.
+image_url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
+image_sha256: 9fc9e9ff16888bb68ac39b0392e25c9c92684d50c85f1cce6ab549363bbc4b48
+os: rocky-10
+user: labadmin

@@ -1,0 +1,85 @@
+# Functional Requirements
+
+IDs are stable; reference them in design docs, commits, and tests.
+
+## FR-1 Foundation (phase 1)
+
+- **FR-1.1** Provision the outer KVM VM (Ubuntu Server, libvirt NAT) unattended
+  from one command, idempotently: rerunning against an existing managed VM must
+  never destroy or reinstall it.
+- **FR-1.2** Install a pinned K3s + CNI + KubeVirt + CDI stack inside the outer
+  VM from one command, resumable after partial failure.
+- **FR-1.3** `lab status` reports host, outer VM, cluster, and per-VM health in
+  one screen, ending with a single actionable `NEXT:` hint when unhealthy.
+- **FR-1.4** `lab up` recovers the whole lab after a laptop or outer-VM restart:
+  start the outer VM (with confirmation), wait for SSH, run guarded network
+  repairs, wait for pod recovery, and report VM inventory.
+- **FR-1.5** All mutating operations only touch resources carrying the project
+  ownership marker; same-named unmanaged resources are refused.
+
+## FR-2 Declarative VM lifecycle (phase 2)
+
+- **FR-2.1** VMs are defined in versioned YAML: name, blueprint (OS/desktop
+  variant), vCPU/RAM/disk, labels, exposed ports, and desired run state.
+- **FR-2.2** `lab vm apply` reconciles definitions to the cluster: creates
+  missing VMs (image import via CDI, cloud-init from the blueprint), applies
+  size/label changes where possible, and reports drift. Deleting a definition
+  never deletes a VM without an explicit `lab vm delete <name>` confirmation.
+- **FR-2.3** Blueprints are shared templates (Ubuntu server, Rocky server,
+  Rocky desktop and Ubuntu GNOME desktop). Adding a VM from an existing
+  blueprint requires YAML only — no new code or scripts.
+- **FR-2.4** `lab vm list` shows status, readiness, IP, sizing, labels, exposed
+  ports, and supported access methods for every VM.
+- **FR-2.5** `lab vm start|stop|restart <name>` manage run state; `lab vm
+  console <name>` opens the serial/VNC console for boot debugging.
+- **FR-2.6** Guest images are downloaded once, checksum-verified, and cached in
+  `state/cache/`.
+- **FR-2.7** Provide an image-building workflow that preinstalls desktop
+  software and updates in reusable, versioned VM images, reducing first-boot
+  setup time. New VMs must still receive their own hostname, SSH keys and
+  other instance-specific configuration; images must not contain lab secrets.
+- **FR-2.8** Support patching a prebuilt image to produce a new version for
+  future VMs. Never silently replace existing VM disks. Document how to build,
+  patch, verify and use image versions, and explain how existing VMs are
+  patched separately.
+
+## FR-3 Access (phase 2)
+
+- **FR-3.1** `lab ssh <vm>` opens an interactive shell to any running guest via
+  the Kubernetes API (virtctl tunnel) — key-only auth, no public listeners, no
+  passwords. Also supports one-shot commands: `lab ssh <vm> -- <cmd>`.
+- **FR-3.2** `lab rdp <vm>` opens (or prints) a tunneled RDP endpoint on
+  loopback for desktop guests and reports the port and user; tunnels survive
+  the command exiting and are cleaned up/reopened by `lab up`. `lab rdp --all`
+  opens tunnels for RDP-configured running VMs, reporting stopped or
+  unreachable VMs without starting them.
+- **FR-3.3** Desktop password management: `lab vm set-password <vm>` sets the
+  RDP/graphical password; SSH never uses passwords; nothing secret is committed.
+- **FR-3.4** Per-VM SSH keys and known-hosts files are generated into
+  `state/secrets/` automatically and pinned on every connection.
+
+## FR-4 Microsegmentation (phase 3)
+
+- **FR-4.1** Segments (namespaces/labels) and NetworkPolicies are declared in
+  versioned manifests applied by `lab policy apply`.
+- **FR-4.2** `lab policy test` verifies both allowed and denied flows using real
+  guest-originated traffic (not just pod probes), and emits a pass/fail matrix.
+- **FR-4.3** Test definitions declare expected reachability (source VM, target
+  VM, port, expect allow|deny) alongside the policies they validate.
+- **FR-4.4** The CNI is Cilium so segmentation can later grow from L3/L4 to
+  Layer 7 rules (CiliumNetworkPolicy: HTTP methods/paths, DNS). L7 rule
+  authoring itself is out of scope for v2 phases 1–4; the platform must not
+  block it.
+
+## FR-5 Switchboard (phase 4)
+
+- **FR-5.1** A local web UI shows the same inventory/health as `lab status` /
+  `lab vm list`, reusing the same Python core (no logic duplication).
+- **FR-5.2** The UI can run whitelisted tasks (start/stop VM, open tunnel,
+  policy test) with the same guards as the CLI.
+- **FR-5.3** Loopback-only listener, authenticated, secrets kept in
+  `state/secrets/`.
+- **FR-5.4** Show each VM's image import phase and percentage while
+  provisioning, and the progress of other long-running tasks when available.
+  When no percentage is reported, show the current state instead; do not
+  present image import progress as overall desktop installation progress.

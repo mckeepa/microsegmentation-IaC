@@ -1,3 +1,6 @@
+# v2 local runtime state (secrets + cached images); /work/ is the v1 equivalent
+# still present on disk until the old lab is torn down.
+/state/
 /work/
 
 # Installed dependencies and private environment configuration.
@@ -6,6 +9,13 @@ node_modules/
 .env.*
 !.env.example
 !.env.*.example
+
+# Python virtualenv and caches.
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Local logs, editor backups, and OS metadata.
 *.log
