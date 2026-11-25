@@ -1,0 +1,68 @@
+#cloud-config
+hostname: {hostname}
+users:
+  - name: {user}
+    groups: [sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {ssh_public_key}
+  - name: desktop
+    shell: /bin/bash
+    lock_passwd: true
+ssh_pwauth: false
+write_files:
+  - path: /usr/local/sbin/configure-lab-desktop
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      rm -f /etc/netplan/50-cloud-init.yaml
+      netplan apply
+      apt-get update
+      apt-get -y install ubuntu-desktop xrdp xorgxrdp qemu-guest-agent \
+        openssh-server dbus-x11
+      adduser xrdp ssl-cert
+      sed -i '/^\[Globals\]/,/^\[/ s/^port=3389$/port=tcp:\/\/127.0.0.1:3389/' /etc/xrdp/xrdp.ini
+      grep -qx 'port=tcp://127.0.0.1:3389' /etc/xrdp/xrdp.ini
+      printf 'export GNOME_SHELL_SESSION_MODE=ubuntu\nexport XDG_CURRENT_DESKTOP=ubuntu:GNOME\nexport XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg\n' > /home/desktop/.xsessionrc
+      chown desktop:desktop /home/desktop/.xsessionrc
+      chmod 0644 /home/desktop/.xsessionrc
+      cat > /etc/polkit-1/rules.d/45-lab-desktop-colord.rules <<'EOF'
+      polkit.addRule(function(action, subject) {{
+        if (action.id.indexOf("org.freedesktop.color-manager.") === 0 &&
+            subject.user === "desktop") {{
+          return polkit.Result.YES;
+        }}
+      }});
+      EOF
+      chmod 0644 /etc/polkit-1/rules.d/45-lab-desktop-colord.rules
+      install -d -m 0700 -o desktop -g desktop /home/desktop/.config
+      printf 'yes\n' > /home/desktop/.config/gnome-initial-setup-done
+      chown desktop:desktop /home/desktop/.config/gnome-initial-setup-done
+      systemctl enable --now ssh qemu-guest-agent
+      systemctl enable xrdp
+      systemctl restart xrdp
+      systemctl set-default graphical.target
+      systemctl start graphical.target
+  - path: /etc/cloud/cloud.cfg.d/99-microsegmentation-lab-network.cfg
+    permissions: '0644'
+    content: |
+      network:
+        config: disabled
+  - path: /etc/netplan/90-microsegmentation-lab.yaml
+    permissions: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          lab-nic:
+            match:
+              name: "en*"
+            renderer: networkd
+            dhcp4: true
+            dhcp6: true
+runcmd:
+  - [bash, /usr/local/sbin/configure-lab-desktop]

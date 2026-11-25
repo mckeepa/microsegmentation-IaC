@@ -62,6 +62,12 @@ class OuterVM:
 
 
 @dataclass(frozen=True)
+class RDPConfig:
+    local_port: int
+    user: str
+
+
+@dataclass(frozen=True)
 class VMDef:
     name: str
     blueprint: str
@@ -69,6 +75,7 @@ class VMDef:
     segment: str
     ports: tuple[int, ...]
     run: bool
+    rdp: RDPConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +132,25 @@ def load_config(path: Path = LAB_YAML) -> LabConfig:
             ),
             disk_gib=_positive_int(_require(size_raw, "disk_gib", context), "disk_gib", context),
         )
+        rdp_raw = entry.get("rdp")
+        rdp = None
+        if rdp_raw is not None:
+            if not isinstance(rdp_raw, dict):
+                raise ConfigError(f"{context}: 'rdp' must be a mapping")
+            port = _positive_int(_require(rdp_raw, "local_port", context), "local_port", context)
+            if not 1024 <= port <= 65535:
+                raise ConfigError(f"{context}: RDP local_port must be between 1024 and 65535")
+            user = _require(rdp_raw, "user", context)
+            if (
+                not isinstance(user, str)
+                or not user
+                or not user.isascii()
+                or not all(c.isalnum() or c in "_-" for c in user)
+            ):
+                raise ConfigError(f"{context}: RDP user must be a valid account name")
+            if 22 not in entry.get("ports", []):
+                raise ConfigError(f"{context}: RDP requires SSH port 22")
+            rdp = RDPConfig(local_port=port, user=user)
         vms.append(
             VMDef(
                 name=name,
@@ -133,6 +159,7 @@ def load_config(path: Path = LAB_YAML) -> LabConfig:
                 segment=str(_require(entry, "segment", context)),
                 ports=tuple(int(p) for p in entry.get("ports", [])),
                 run=bool(entry.get("run", False)),
+                rdp=rdp,
             )
         )
 
@@ -140,5 +167,9 @@ def load_config(path: Path = LAB_YAML) -> LabConfig:
     duplicates = {n for n in names if names.count(n) > 1}
     if duplicates:
         raise ConfigError(f"duplicate VM names: {sorted(duplicates)}")
+
+    ports = [vm.rdp.local_port for vm in vms if vm.rdp is not None]
+    if len(set(ports)) != len(ports):
+        raise ConfigError("RDP local ports must be unique")
 
     return LabConfig(outer_vm=outer, vms=tuple(vms))

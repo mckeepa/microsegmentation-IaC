@@ -1,6 +1,9 @@
 """VM reconciliation tests: blueprints, manifests, and guest access commands."""
 
+import subprocess
+
 import pytest
+import yaml
 
 from lab.access import guest_ssh_command
 from lab.config import OuterVM, Size, VMDef
@@ -27,7 +30,7 @@ OUTER = OuterVM(
 
 
 def test_repo_blueprints_load_with_pinned_images() -> None:
-    for name in ("ubuntu-server", "rocky-server"):
+    for name in ("ubuntu-server", "rocky-server", "ubuntu-desktop"):
         blueprint = load_blueprint(name)
         assert blueprint.image_url.startswith("https://")
         assert "latest" not in blueprint.image_url
@@ -46,6 +49,36 @@ def test_guest_user_data_injects_key_and_disables_passwords() -> None:
     assert "- ssh-ed25519 AAAA key" in user_data
     assert "ssh_pwauth: false" in user_data
     assert "lock_passwd: true" in user_data
+
+
+def test_ubuntu_desktop_cloud_init_renders_and_configures_rdp() -> None:
+    blueprint = load_blueprint("ubuntu-desktop")
+    rendered = render_guest_user_data(blueprint, "ubuntu-desktop", "ssh-ed25519 AAAA key")
+    config = yaml.safe_load(rendered)
+    assert config["hostname"] == "ubuntu-desktop"
+    assert config["users"][0]["ssh_authorized_keys"] == ["ssh-ed25519 AAAA key"]
+    assert config["users"][1]["name"] == "desktop"
+    assert config["users"][1]["lock_passwd"] is True
+    assert config["ssh_pwauth"] is False
+    script = config["write_files"][0]["content"]
+    assert "apt-get -y install ubuntu-desktop xrdp xorgxrdp" in script
+    assert "port=tcp://127.0.0.1:3389" in script
+    assert "GNOME_SHELL_SESSION_MODE=ubuntu" in script
+    assert script.index("adduser xrdp ssl-cert") < script.index("systemctl restart xrdp")
+    assert script.index("port=tcp://127.0.0.1:3389") < script.index("systemctl restart xrdp")
+    files = {item["path"]: item["content"] for item in config["write_files"]}
+    cloud_network = yaml.safe_load(
+        files["/etc/cloud/cloud.cfg.d/99-microsegmentation-lab-network.cfg"]
+    )
+    netplan = yaml.safe_load(files["/etc/netplan/90-microsegmentation-lab.yaml"])
+    nic = netplan["network"]["ethernets"]["lab-nic"]
+    assert cloud_network["network"]["config"] == "disabled"
+    assert nic["match"] == {"name": "en*"}
+    assert nic["renderer"] == "networkd"
+    assert nic["dhcp4"] is True
+    assert script.index("netplan apply") < script.index("apt-get update")
+    assert config["runcmd"] == [["bash", "/usr/local/sbin/configure-lab-desktop"]]
+    subprocess.run(["bash", "-n"], input=script, text=True, check=True)
 
 
 def test_vm_manifest_encodes_definition() -> None:

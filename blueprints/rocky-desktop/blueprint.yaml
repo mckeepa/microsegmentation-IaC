@@ -1,0 +1,4 @@
+image_url: https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base-9.9-20261112.0.x86_64.qcow2
+image_sha256: 4f88f4209de50813d8054ab97309e7169a580206a0c4ea04f375d36c4846d50e
+os: rocky-9
+user: labadmin

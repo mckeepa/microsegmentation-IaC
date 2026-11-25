@@ -1,0 +1,40 @@
+#cloud-config
+hostname: {hostname}
+users:
+  - name: {user}
+    groups: [wheel]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {ssh_public_key}
+  - name: desktop
+    shell: /bin/bash
+    lock_passwd: true
+ssh_pwauth: false
+write_files:
+  - path: /usr/local/sbin/configure-lab-desktop
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      dnf -y install dnf-plugins-core epel-release
+      dnf config-manager --set-enabled crb
+      dnf -y install xfce4-session xfce4-panel xfce4-settings xfce4-terminal xfdesktop xfwm4 \
+        Thunar firefox lightdm lightdm-gtk xorg-x11-server-Xorg xorg-x11-xinit \
+        xrdp xorgxrdp xrdp-selinux qemu-guest-agent openssh-server openssl dbus-x11
+      sed -i '/^\[Globals\]/,/^\[/ s/^port=3389$/port=tcp:\/\/127.0.0.1:3389/' /etc/xrdp/xrdp.ini
+      grep -qx 'port=tcp://127.0.0.1:3389' /etc/xrdp/xrdp.ini
+      printf '#!/bin/sh\nexec startxfce4\n' > /home/desktop/.Xclients
+      cp /home/desktop/.Xclients /home/desktop/.xsession
+      chown desktop:desktop /home/desktop/.Xclients /home/desktop/.xsession
+      chmod 0755 /home/desktop/.Xclients /home/desktop/.xsession
+      restorecon -RF /home/desktop
+      install -d -m 0755 /etc/lightdm/lightdm.conf.d
+      printf '[Seat:*]\nuser-session=xfce\n' > /etc/lightdm/lightdm.conf.d/50-lab-desktop.conf
+      systemctl enable --now sshd qemu-guest-agent xrdp
+      systemctl enable lightdm
+      systemctl set-default graphical.target
+      systemctl start graphical.target
+runcmd:
+  - [bash, /usr/local/sbin/configure-lab-desktop]

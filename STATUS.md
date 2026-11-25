@@ -1,5 +1,33 @@
 # Implementation Checkpoint — 2026-11-14
 
+## VM image build requirements — 2026-11-25
+
+- **Pending (FR-2.7):** Add an image-building tool or workflow to preinstall
+  desktop software and updates in reusable, versioned VM images, so new VMs
+  start more quickly. Keep instance-specific settings and secrets out of the
+  image; configure them when each VM is created.
+- **Pending (FR-2.8):** Allow a prebuilt image to be patched and saved as a new
+  version for future VMs. Patching an image does not patch existing VM disks;
+  never replace those disks silently.
+- When implementing the workflow, include instructions for building,
+  patching, verifying and using image versions, and for patching existing VMs
+  separately. The tool and workflow have not yet been implemented.
+
+## Switchboard requirement — 2026-11-25
+
+- **Pending (FR-5.4):** Show each VM's image import phase and percentage during
+  provisioning, plus progress for other long-running tasks where available.
+  Show the state when a percentage is unavailable, and distinguish image
+  import progress from overall desktop installation. The switchboard has not
+  yet been implemented.
+
+## Update — 2026-11-21
+
+- Added a Rocky desktop blueprint, a `desk-01` definition, and `lab rdp --all`
+  for RDP-configured VMs. Stopped or unreachable VMs are reported, not started.
+- The new desktop and tunnels have **not** been tested end-to-end. The existing
+  CDI HTTP importer does not verify the blueprint image SHA-256.
+
 Branch `v2-20261114`. This is the resume point after a deliberate stop (laptop
 shutdown). The lab was **healthy and all verifications below passed** when the
 outer VM was shut down.

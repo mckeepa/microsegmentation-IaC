@@ -26,14 +26,22 @@ IDs are stable; reference them in design docs, commits, and tests.
   size/label changes where possible, and reports drift. Deleting a definition
   never deletes a VM without an explicit `lab vm delete <name>` confirmation.
 - **FR-2.3** Blueprints are shared templates (Ubuntu server, Rocky server,
-  Rocky desktop at minimum). Adding a VM from an existing blueprint requires
-  YAML only — no new code or scripts.
+  Rocky desktop and Ubuntu GNOME desktop). Adding a VM from an existing
+  blueprint requires YAML only — no new code or scripts.
 - **FR-2.4** `lab vm list` shows status, readiness, IP, sizing, labels, exposed
   ports, and supported access methods for every VM.
 - **FR-2.5** `lab vm start|stop|restart <name>` manage run state; `lab vm
   console <name>` opens the serial/VNC console for boot debugging.
 - **FR-2.6** Guest images are downloaded once, checksum-verified, and cached in
   `state/cache/`.
+- **FR-2.7** Provide an image-building workflow that preinstalls desktop
+  software and updates in reusable, versioned VM images, reducing first-boot
+  setup time. New VMs must still receive their own hostname, SSH keys and
+  other instance-specific configuration; images must not contain lab secrets.
+- **FR-2.8** Support patching a prebuilt image to produce a new version for
+  future VMs. Never silently replace existing VM disks. Document how to build,
+  patch, verify and use image versions, and explain how existing VMs are
+  patched separately.
 
 ## FR-3 Access (phase 2)
 
@@ -42,7 +50,9 @@ IDs are stable; reference them in design docs, commits, and tests.
   passwords. Also supports one-shot commands: `lab ssh <vm> -- <cmd>`.
 - **FR-3.2** `lab rdp <vm>` opens (or prints) a tunneled RDP endpoint on
   loopback for desktop guests and reports the port and user; tunnels survive
-  the command exiting and are cleaned up/reopened by `lab up`.
+  the command exiting and are cleaned up/reopened by `lab up`. `lab rdp --all`
+  opens tunnels for RDP-configured running VMs, reporting stopped or
+  unreachable VMs without starting them.
 - **FR-3.3** Desktop password management: `lab vm set-password <vm>` sets the
   RDP/graphical password; SSH never uses passwords; nothing secret is committed.
 - **FR-3.4** Per-VM SSH keys and known-hosts files are generated into
@@ -69,3 +79,7 @@ IDs are stable; reference them in design docs, commits, and tests.
   policy test) with the same guards as the CLI.
 - **FR-5.3** Loopback-only listener, authenticated, secrets kept in
   `state/secrets/`.
+- **FR-5.4** Show each VM's image import phase and percentage while
+  provisioning, and the progress of other long-running tasks when available.
+  When no percentage is reported, show the current state instead; do not
+  present image import progress as overall desktop installation progress.

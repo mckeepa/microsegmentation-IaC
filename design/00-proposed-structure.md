@@ -25,7 +25,8 @@ folders, one entry point) inviolable.
 ├── blueprints/            # per-variant VM templates (spec + cloud-init, jinja)
 │   ├── ubuntu-server/
 │   ├── rocky-server/
-│   └── rocky-desktop/
+│   ├── rocky-desktop/
+│   └── ubuntu-desktop/
 ├── policies/              # segment manifests + declared flow expectations
 ├── tests/                 # pytest: unit tests + policy test definitions
 └── state/                 # gitignored local runtime state

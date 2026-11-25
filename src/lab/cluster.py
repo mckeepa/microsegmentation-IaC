@@ -181,9 +181,7 @@ class Cluster:
         # mode and every DataVolume fails with ErrClaimNotValid. Declare it.
         self.wait_until(
             "local-path StorageProfile created",
-            lambda: self._check(
-                f"{KUBECTL} get storageprofile local-path", "probe StorageProfile"
-            ),
+            lambda: self._check(f"{KUBECTL} get storageprofile local-path", "probe StorageProfile"),
             timeout_s=120,
         )
         claim_properties = (

@@ -14,6 +14,16 @@ import typer
 app = typer.Typer(
     no_args_is_help=True,
     help="Declarative KubeVirt home lab: VMs on Kubernetes with one-command SSH/RDP.",
+    epilog=(
+        "Examples:\n\n"
+        "\b\n"
+        "  uv run lab vm list                 List VMs\n"
+        "  uv run lab rdp desk-01             Start one RDP loopback\n"
+        "  uv run lab rdp --all               Start all configured RDP loopbacks\n"
+        "  xfreerdp3 /v:127.0.0.1:13389 /u:desktop /d: /cert:tofu /dynamic-resolution\n\n"
+        "RDP tunnels require running, configured desktop VMs. "
+        "Use the printed port and desktop username to connect."
+    ),
 )
 vm_app = typer.Typer(no_args_is_help=True, help="Declarative VM lifecycle (phase 2).")
 policy_app = typer.Typer(
@@ -130,9 +140,25 @@ def ssh(
 
 
 @app.command()
-def rdp(vm_name: str) -> None:
-    """Open a loopback RDP tunnel to a desktop guest (FR-3.2)."""
-    _todo(2)
+def rdp(
+    vm_name: Annotated[str | None, typer.Argument(help="Configured desktop VM name.")] = None,
+    all_vms: Annotated[
+        bool, typer.Option("--all", help="Open all configured RDP tunnels.")
+    ] = False,
+) -> None:
+    """Open loopback RDP tunnels to running desktop guests (FR-3.2)."""
+    from lab import access
+
+    if (vm_name is None) == (not all_vms):
+        raise typer.BadParameter("specify a VM name or --all, but not both")
+    lab_config, cluster = _connect()
+    with _vm_errors():
+        selected = tuple(vm for vm in lab_config.vms if all_vms or vm.name == vm_name)
+        if not selected:
+            raise typer.BadParameter(f"VM {vm_name!r} is not defined in lab.yaml")
+        if not all_vms and selected[0].rdp is None:
+            raise typer.BadParameter(f"VM {vm_name!r} is not configured for RDP")
+        raise typer.Exit(access.open_rdp_tunnels(cluster, selected))
 
 
 @app.command()
@@ -210,7 +236,14 @@ def vm_console(vm_name: str) -> None:
 @vm_app.command("set-password")
 def vm_set_password(vm_name: str) -> None:
     """Set a desktop guest's RDP/graphical password (FR-3.3)."""
-    _todo(2)
+    from lab import access
+
+    lab_config, cluster = _connect()
+    with _vm_errors():
+        selected = next((vm for vm in lab_config.vms if vm.name == vm_name), None)
+        if selected is None:
+            raise typer.BadParameter(f"VM {vm_name!r} is not defined in lab.yaml")
+        raise typer.Exit(access.set_desktop_password(cluster, selected))
 
 
 @policy_app.command("apply")
