@@ -44,7 +44,7 @@ def guest_ssh_command(
     ]
 
 
-def _guest_address(cluster: Cluster, name: str) -> tuple[str, str]:
+def _guest_address(cluster: Cluster, name: str, *, vm: VMDef | None = None) -> tuple[str, str]:
     """Return (guest_ip, guest_user) for a running managed VM."""
     result = cluster.rsh(
         f"{KUBECTL} get vmi -A -l {MANAGED_LABEL}={MANAGED_VALUE} -o json",
@@ -53,11 +53,17 @@ def _guest_address(cluster: Cluster, name: str) -> tuple[str, str]:
     for vmi in json.loads(result.stdout).get("items", []):
         if vmi["metadata"]["name"] != name:
             continue
+        if vm is not None and vmi["metadata"]["namespace"] != vm.segment:
+            continue
+        if vm is not None and vmi.get("status", {}).get("phase") != "Running":
+            raise ProvisionError(f"{name} is not running; see `lab vm list`")
+        blueprint = vmi["metadata"]["labels"].get("lab.local/blueprint", "")
+        if vm is not None and blueprint != vm.blueprint:
+            raise ProvisionError(f"{name}: running VM blueprint does not match lab.yaml")
         interfaces = vmi.get("status", {}).get("interfaces", [])
         ip = interfaces[0].get("ipAddress", "") if interfaces else ""
         if not ip:
             raise ProvisionError(f"{name} is running but has no address yet; retry shortly")
-        blueprint = vmi["metadata"]["labels"].get("lab.local/blueprint", "")
         return ip, load_blueprint(blueprint).user
     raise ProvisionError(f"no running managed instance named {name!r}; see `lab vm list`")
 
@@ -77,6 +83,71 @@ def ssh_to_vm(cluster: Cluster, outer: OuterVM, name: str, command: list[str]) -
         capture=False,
         timeout=None,
     )
+    return result.returncode
+
+
+def patch_vm(cluster: Cluster, vm: VMDef) -> int:
+    """Update packages on one running guest without rebooting it."""
+    blueprint = load_blueprint(vm.blueprint)
+    if blueprint.os == "ubuntu-24.04":
+        expected_os = "ubuntu"
+        version_pattern = "24.04"
+        update = (
+            "export DEBIAN_FRONTEND=noninteractive\n"
+            "apt-get update\n"
+            "apt-get -y -o Dpkg::Options::=--force-confold upgrade --with-new-pkgs\n"
+            'if [ -e /run/reboot-required ]; then echo "A reboot is required."; fi\n'
+        )
+    elif blueprint.os in ("rocky-9", "rocky-10"):
+        expected_os = "rocky"
+        version = blueprint.os.removeprefix("rocky-")
+        version_pattern = f"{version}|{version}.*"
+        update = "dnf -y upgrade --refresh\necho 'Check whether a reboot is required.'\n"
+    else:
+        raise ProvisionError(f"{vm.name}: patching is not supported for {blueprint.os!r}")
+
+    script = (
+        "set -eu\n"
+        ". /etc/os-release\n"
+        f'if [ "$ID" != {shlex.quote(expected_os)} ]; then\n'
+        "  echo 'Guest OS does not match the configured blueprint' >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        f'case "$VERSION_ID" in {version_pattern}) ;; *)\n'
+        "  echo 'Guest OS version does not match the configured blueprint' >&2\n"
+        "  exit 1;;\n"
+        "esac\n"
+        "cloud-init status --wait\n"
+        f"{update}"
+    )
+    guest_ip, guest_user = _guest_address(cluster, vm.name, vm=vm)
+    ssh = guest_ssh_command(cluster.vm, cluster.ip, vm.name, guest_ip, guest_user)
+    typer.echo(f"{vm.name}: updating guest packages; this may restart services.")
+    result = run(
+        [
+            *ssh[:-1],
+            "-o",
+            "BatchMode=yes",
+            ssh[-1],
+            "sudo",
+            "-n",
+            "bash",
+            "-c",
+            shlex.quote(script),
+        ],
+        description=f"patch guest {vm.name}",
+        check=False,
+        capture=False,
+        timeout=None,
+    )
+    if result.returncode == 0:
+        typer.echo(f"{vm.name}: package update completed; the VM was not rebooted.")
+    else:
+        typer.secho(
+            f"{vm.name}: package update failed (exit {result.returncode}); check output above.",
+            err=True,
+            fg=typer.colors.RED,
+        )
     return result.returncode
 
 

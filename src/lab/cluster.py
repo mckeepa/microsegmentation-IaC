@@ -262,7 +262,7 @@ def up(vm: OuterVM, start_vm: bool = False) -> int:
     return status(vm)
 
 
-def status(vm: OuterVM) -> int:
+def status(vm: OuterVM, install_image_tools: bool = False) -> int:
     """One-screen health report ending in a NEXT: hint (FR-1.3). Returns exit code."""
     from lab.host import domain_exists, domain_state, domain_title
 
@@ -297,6 +297,19 @@ def status(vm: OuterVM) -> int:
     if not ssh_ok:
         typer.echo("NEXT: check the VM console; SSH is not answering.")
         return 1
+    if install_image_tools:
+        typer.echo("Installing or updating image-building tools in the outer VM...")
+        cluster.rsh(
+            "sudo -n apt-get update",
+            "update outer VM package lists for image tools",
+            timeout=600,
+        )
+        cluster.rsh(
+            "sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y "
+            "--no-install-recommends libguestfs-tools qemu-utils isc-dhcp-client",
+            "install or update outer VM image tools",
+            timeout=1800,
+        )
     typer.echo("Cluster:")
     checks = [
         ("K3s service", "systemctl is-active --quiet k3s"),
@@ -318,5 +331,23 @@ def status(vm: OuterVM) -> int:
     if failed:
         typer.echo(f"NEXT: rerun `lab provision` to repair: {', '.join(failed)} not healthy.")
         return 1
+    typer.echo("Image builder:")
+    typer.echo("  [TODO] local image registry not implemented")
+    tools_ready = cluster._check(
+        "command -v virt-customize >/dev/null && command -v virt-sysprep >/dev/null "
+        "&& command -v guestfish >/dev/null && command -v qemu-img >/dev/null "
+        "&& command -v dhclient >/dev/null",
+        "check image builder tools",
+    )
+    kvm_ready = cluster._check("sudo -n test -r /dev/kvm", "check nested KVM for image builder")
+    if not tools_ready:
+        typer.echo("  [WARN] disk-building tools unavailable (optional)")
+        typer.echo("NEXT: run `lab status --install-image-tools` to install the image tools.")
+        return int(install_image_tools)
+    if not kvm_ready:
+        typer.echo("  [WARN] nested KVM unavailable for the image builder (optional)")
+        typer.echo("NEXT: enable nested KVM for the outer VM before building images.")
+        return int(install_image_tools)
+    line(True, "disk-building tools and nested KVM")
     typer.echo("NEXT: lab is healthy. Define VMs in lab.yaml and run `lab vm apply` (phase 2).")
     return 0

@@ -43,7 +43,10 @@ IDs are stable; reference them in design docs, commits, and tests.
 - **FR-2.8** Build patched images from a prebuilt base, assigning each
   successful build a unique, immutable date-and-time version. Retain previous
   versions and provide a `latest` alias for the most recent successful,
-  verified build.
+  verified build. Package the VM disk in a container image and store these
+  images in a local registry within the lab. Run the build workflow in the
+  outer lab VM; a Dockerfile updating a container filesystem must not be
+  mistaken for patching the VM disk.
 - **FR-2.9** Allow lab configuration to select `latest` or a specific
   date-and-time image version for new VMs, so an earlier version can be
   selected if a build has problems. Record the resolved version and checksum
@@ -52,6 +55,8 @@ IDs are stable; reference them in design docs, commits, and tests.
 - **FR-2.10** Document how to build a base image, create a patched version,
   verify it, select `latest` or an earlier version, and patch existing VMs
   separately.
+- **FR-2.11** Allow an explicit, audit-logged package update of an existing
+  running VM without replacing its disk or automatically rebooting it.
 
 ## FR-3 Access (phase 2)
 

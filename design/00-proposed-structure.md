@@ -18,6 +18,7 @@ folders, one entry point) inviolable.
 │   ├── cluster.py         #   K3s/CNI/KubeVirt/CDI install, health, repair
 │   ├── vms.py             #   reconcile lab.yaml → KubeVirt objects
 │   ├── images.py          #   download/verify/cache/CDI-upload guest images
+│   ├── image_builder.py   #   experimental versioned Ubuntu disk builds in outer VM
 │   ├── access.py          #   SSH (virtctl tunnel), RDP tunnels, key mgmt
 │   ├── policy.py          #   apply policies, run flow test matrix
 │   ├── run.py             #   logged runner for ALL external commands (NFR-6)

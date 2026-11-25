@@ -26,7 +26,7 @@ app = typer.Typer(
     ),
 )
 vm_app = typer.Typer(no_args_is_help=True, help="Declarative VM lifecycle (phase 2).")
-image_app = typer.Typer(no_args_is_help=True, help="Guest image cache.")
+image_app = typer.Typer(no_args_is_help=True, help="Guest image cache and experimental builder.")
 policy_app = typer.Typer(
     no_args_is_help=True, help="Microsegmentation policies and tests (phase 3)."
 )
@@ -47,15 +47,24 @@ def _todo(phase: int) -> None:
 
 
 @app.command()
-def status() -> None:
+def status(
+    install_image_tools: Annotated[
+        bool,
+        typer.Option(
+            "--install-image-tools",
+            help="Install or update image-building packages in the outer VM.",
+        ),
+    ] = False,
+) -> None:
     """Report host, outer VM, cluster, and per-VM health with a NEXT: hint (FR-1.3)."""
     from lab import cluster
     from lab.config import ConfigError, load_config
+    from lab.run import CommandError
 
     try:
         lab_config = load_config()
-        raise typer.Exit(cluster.status(lab_config.outer_vm))
-    except ConfigError as error:
+        raise typer.Exit(cluster.status(lab_config.outer_vm, install_image_tools))
+    except (ConfigError, CommandError) as error:
         typer.secho(f"Error: {error}", err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from None
 
@@ -180,6 +189,50 @@ def image_fetch(blueprint_name: str) -> None:
         fetch_image(blueprint.image_url, blueprint.image_sha256)
 
 
+@image_app.command("build-base")
+def image_build_base(blueprint_name: str) -> None:
+    """Build an experimental Ubuntu server base disk in the outer VM."""
+    from lab.image_builder import build
+    from lab.vms import load_blueprint
+
+    _, cluster = _connect()
+    with _vm_errors():
+        build(cluster, load_blueprint(blueprint_name), patch=False)
+
+
+@image_app.command("patch")
+def image_patch(blueprint_name: str) -> None:
+    """Build an experimental patched disk from the local base image."""
+    from lab.image_builder import build
+    from lab.vms import load_blueprint
+
+    _, cluster = _connect()
+    with _vm_errors():
+        build(cluster, load_blueprint(blueprint_name), patch=True)
+
+
+@image_app.command("list")
+def image_list(blueprint_name: str) -> None:
+    """List experimental local disk-image versions."""
+    from lab.image_builder import list_images
+    from lab.vms import load_blueprint
+
+    _, cluster = _connect()
+    with _vm_errors():
+        list_images(cluster, load_blueprint(blueprint_name))
+
+
+@image_app.command("verify")
+def image_verify(blueprint_name: str, version: Annotated[str, typer.Argument()] = "latest") -> None:
+    """Verify a local image checksum and manifest (default: latest)."""
+    from lab.image_builder import verify_image
+    from lab.vms import load_blueprint
+
+    _, cluster = _connect()
+    with _vm_errors():
+        verify_image(cluster, load_blueprint(blueprint_name), version)
+
+
 @vm_app.command("apply")
 def vm_apply() -> None:
     """Reconcile lab.yaml definitions to the cluster (FR-2.2)."""
@@ -228,6 +281,19 @@ def vm_restart(vm_name: str) -> None:
     _, cluster = _connect()
     with _vm_errors():
         vms.restart_vm(cluster, vm_name)
+
+
+@vm_app.command("patch")
+def vm_patch(vm_name: str) -> None:
+    """Update packages on one running VM without rebooting it."""
+    from lab import access
+
+    lab_config, cluster = _connect()
+    with _vm_errors():
+        selected = next((vm for vm in lab_config.vms if vm.name == vm_name), None)
+        if selected is None:
+            raise typer.BadParameter(f"VM {vm_name!r} is not defined in lab.yaml")
+        raise typer.Exit(access.patch_vm(cluster, selected))
 
 
 @vm_app.command("delete")
